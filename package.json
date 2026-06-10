@@ -1,0 +1,21 @@
+{
+  "name": "did-jwt-passkey-demo",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "POC: a WebAuthn passkey signing/verifying VC-JWTs through did-jwt + did-jwt-webauthn-signer (alg: WebAuthn).",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "did-jwt": "file:../did-jwt",
+    "did-jwt-webauthn-signer": "file:../did-jwt-webauthn-signer",
+    "did-resolver": "^4.1.0"
+  },
+  "devDependencies": {
+    "typescript": "~5.6.3",
+    "vite": "^5.4.8"
+  }
+}
