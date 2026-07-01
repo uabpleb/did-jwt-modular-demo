@@ -1,15 +1,26 @@
-# did-jwt × WebAuthn passkey (POC)
+# did-jwt multi-algorithm demo (POC)
 
-A passkey acting as a **did-jwt signer/verifier** under a dedicated `alg: WebAuthn`.
-Unlike the earlier standalone version, this demo runs through the **real `did-jwt`
-fork** (`createJWT` / `verifyJWT`) and the [`did-jwt-webauthn-signer`](../did-jwt-webauthn-signer)
-module — so it exercises the async `AbstractVerifier` seam end-to-end in the browser.
+Two pages served by one Vite app:
+
+- **`/` (index.html) — the unified composite demo.** ONE `CompositeSigner` and ONE
+  `CompositeVerifier` serve three algorithm modules at once: **EdDSA** (did-jwt's
+  built-in `SoftwareSigner`/`SoftwareVerifier`, `did:jwk`), **EIP712**
+  ([`did-jwt-eip712-signer`](../did-jwt-eip712-signer), in-page Ethereum wallet,
+  `did:ethr` via a network-free local resolver), and **WebAuthn**
+  ([`did-jwt-webauthn-signer`](../did-jwt-webauthn-signer), passkey, `did:jwk`).
+  Every `createJWT`/`verifyJWT` call uses the same two instances — only `alg`
+  changes. Includes a software-only negative control (drop the modules and the
+  external algs stop verifying), an `expectedDomain` policy rejection for EIP-712,
+  and a tamper check per algorithm.
+- **`/passkey.html` — the WebAuthn deep dive.** The original passkey walkthrough
+  (register → sign → verify → present → replay → tamper), unchanged.
 
 ## Run
 
 ```bash
 npm install
 npm run dev      # open the printed http://localhost:5173
+npm test         # headless smoke test of the composite wiring (no browser needed)
 ```
 
 WebAuthn requires a secure context — `localhost` counts, so dev works without HTTPS.
@@ -91,10 +102,19 @@ the module now; this app is just the UI + a `did:jwk` resolver.
 
 ## Files
 
-- `src/main.ts` — UI wiring: `registerPasskey` / `WebAuthnSigner` / `WebAuthnVerifier`
-  from the module, `createJWT` / `verifyJWT` from `did-jwt`.
+- `index.html` + `src/unified.ts` — the unified composite demo (one
+  `CompositeSigner`/`CompositeVerifier` pair, three algorithms).
+- `passkey.html` + `src/main.ts` — the passkey deep dive: `registerPasskey` /
+  `WebAuthnSigner` / `WebAuthnVerifier` from the module, `createJWT` / `verifyJWT`
+  from `did-jwt`.
 - `src/did-jwk-resolver.ts` — spec-complete `did:jwk` method resolver in the
   `did-resolver` `getResolver()` shape (no network), wired into a real `Resolver`.
-- `index.html` — the demo page.
+- `src/did-ethr-local-resolver.ts` — network-free `did:ethr` resolver synthesizing
+  the default ERC-1056 DID document (`blockchainAccountId`, CAIP-10) for the
+  EIP-712 verifier to match against.
+- `test/smoke.mjs` — headless Node check of the composite wiring (sign + verify
+  EdDSA and EIP712 through the shared pair, software-only negative control,
+  `expectedDomain` rejection, tamper rejection).
 
-All WebAuthn crypto, encoding, and DID derivation live in `did-jwt-webauthn-signer`.
+All WebAuthn crypto, encoding, and DID derivation live in `did-jwt-webauthn-signer`;
+all EIP-712 typed-data construction lives in `did-jwt-eip712-signer`.

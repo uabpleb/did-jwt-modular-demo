@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>did-jwt × WebAuthn passkey — interactive demo</title>
+    <title>did-jwt — one composite signer/verifier, three algorithms</title>
     <style>
       :root {
         color-scheme: light dark;
@@ -20,11 +20,12 @@
       * { box-sizing: border-box; }
       body {
         font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-        max-width: 960px; margin: 2rem auto; padding: 0 1rem; line-height: 1.55; color: var(--fg);
+        max-width: 1020px; margin: 2rem auto; padding: 0 1rem; line-height: 1.55; color: var(--fg);
       }
       code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
       h1 { font-size: 1.4rem; margin-bottom: 0.25rem; }
       h2 { font-size: 1rem; margin: 0; }
+      h3 { font-size: 0.9rem; margin: 0 0 0.4rem; }
       p.lede { color: var(--muted); margin-top: 0; }
       a { color: var(--accent); }
       .card { border: 1px solid var(--line); border-radius: 12px; padding: 1rem 1.1rem; margin: 0.85rem 0; background: var(--panel); }
@@ -37,158 +38,114 @@
       button:disabled { opacity: 0.4; cursor: not-allowed; }
       button.primary { background: var(--accent); color: white; border-color: var(--accent); }
       button.ghost { font-weight: 500; color: var(--muted); }
-
-      /* Stepper */
-      .step { display: grid; grid-template-columns: 2rem 1fr; gap: 0.8rem; }
-      .badge {
-        width: 2rem; height: 2rem; border-radius: 50%; display: grid; place-items: center;
-        border: 2px solid var(--line); font-weight: 700; font-size: 0.9rem; color: var(--muted);
-      }
-      .step[data-state="ready"] .badge { border-color: var(--accent); color: var(--accent); }
-      .step[data-state="done"] .badge { border-color: var(--ok); color: white; background: var(--ok); }
-      .step[data-state="locked"] { opacity: 0.55; }
-      .step .desc { color: var(--muted); font-size: 0.92rem; margin: 0.15rem 0 0.5rem; }
-      .step .call {
+      .desc { color: var(--muted); font-size: 0.92rem; margin: 0.15rem 0 0.5rem; }
+      .call {
         display: block; background: var(--panel2); border: 1px solid var(--line); border-radius: 8px;
         padding: 0.45rem 0.6rem; font-size: 0.82rem; white-space: pre-wrap; word-break: break-word; margin-bottom: 0.6rem;
       }
-      .step-out {
-        font-size: 0.82rem; margin-top: 0.6rem; padding-left: 0.7rem; border-left: 3px solid var(--line);
-        white-space: pre-wrap; word-break: break-all; display: none;
-      }
-      .step-out.show { display: block; }
-      .ok { color: var(--ok); } .bad { color: var(--bad); } .warn { color: var(--warn); }
-
-      .kv { display: grid; grid-template-columns: max-content 1fr; gap: 0.15rem 0.8rem; font-size: 0.85rem; }
+      .grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0.8rem; }
+      .tile { border: 1px solid var(--line); border-radius: 10px; padding: 0.7rem 0.8rem; background: var(--panel2); }
+      .kv { display: grid; grid-template-columns: max-content 1fr; gap: 0.15rem 0.8rem; font-size: 0.8rem; }
       .kv .k { color: var(--muted); }
-
+      .kv span { word-break: break-all; }
       details { margin-top: 0.4rem; }
       summary { cursor: pointer; color: var(--accent); font-size: 0.85rem; }
-      pre { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 0.6rem; overflow: auto; font-size: 0.78rem; margin: 0.4rem 0; }
-
+      pre { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 0.6rem; overflow: auto; font-size: 0.78rem; margin: 0.4rem 0; }
       .flags { display: flex; gap: 0.4rem; flex-wrap: wrap; margin: 0.3rem 0; }
       .flag { font-size: 0.72rem; padding: 0.1rem 0.45rem; border-radius: 6px; border: 1px solid var(--line); color: var(--muted); }
       .flag.on { color: white; background: var(--ok); border-color: var(--ok); }
-
       .seg { padding: 0.15rem 0.3rem; border-radius: 4px; }
       .seg-h { background: light-dark(#ffe9c7, #4a3a16); }
       .seg-p { background: light-dark(#d6ecff, #16334a); }
       .seg-s { background: light-dark(#ffd6e0, #4a1626); }
       .jwt-raw { font-size: 0.74rem; word-break: break-all; }
-      .hl { background: var(--bad); color: white; border-radius: 3px; padding: 0 2px; font-weight: 700; }
-
+      .ok { color: var(--ok); } .bad { color: var(--bad); } .warn { color: var(--warn); }
+      .step-out {
+        font-size: 0.82rem; margin-top: 0.6rem; padding-left: 0.7rem; border-left: 3px solid var(--line);
+        white-space: pre-wrap; word-break: break-word; display: none;
+      }
+      .step-out.show { display: block; }
       #log { font-size: 0.78rem; white-space: pre-wrap; word-break: break-all; max-height: 40vh; overflow: auto; }
       .empty { color: var(--muted); font-style: italic; }
     </style>
   </head>
   <body>
-    <h1>did-jwt × WebAuthn passkey</h1>
+    <h1>One composite signer/verifier, three algorithms</h1>
     <p class="lede">
-      A passkey acting as a did-jwt signer/verifier under a dedicated <code>alg: WebAuthn</code>, driven through the
-      real <code>did-jwt</code> fork and the <code>did-jwt-webauthn-signer</code> module. Work through the steps —
-      each one shows the actual API call it makes and the bytes it produces.
+      A single <code>CompositeSigner</code> and a single <code>CompositeVerifier</code> serve
+      <strong>EdDSA</strong> (did-jwt's built-in <code>SoftwareSigner</code>),
+      <strong>EIP712</strong> (Ethereum wallet typed-data, external module), and
+      <strong>WebAuthn</strong> (passkey, external module) — dispatched by JWT <code>alg</code>.
+      The passkey-only deep dive (presentations, replay, device binding) lives on the
+      <a href="/passkey.html">passkey page</a>.
     </p>
 
-    <!-- Identity -->
+    <!-- The composite pair -->
     <div class="card">
-      <div class="toolbar" style="justify-content: space-between;">
-        <h2>Identity</h2>
-        <div class="toolbar">
-          <label style="font-size: 0.85rem; color: var(--muted);">
-            <input type="checkbox" id="chk-device-bound" />
-            Require device-bound passkey (reject syncable, BE flag = 0)
-          </label>
-          <button id="btn-reset" class="ghost" disabled>Reset</button>
+      <h2>The composite pair</h2>
+      <p class="desc">Algorithms currently registered on the two shared instances. Registering a module adds its algs; nothing else in the page changes.</p>
+      <div class="kv">
+        <span class="k mono">compositeSigner.supportedAlgorithms()</span><span class="flags" id="signer-algs"></span>
+        <span class="k mono">compositeVerifier.supportedAlgorithms()</span><span class="flags" id="verifier-algs"></span>
+      </div>
+    </div>
+
+    <!-- Identities -->
+    <div class="card">
+      <h2>Identities</h2>
+      <p class="desc">Three independent issuers, one per algorithm module. The Ed25519 key is generated in-page on load; the EIP-712 identity is your connected MetaMask account (it signs the typed data and its <code>did:ethr</code> resolves through MetaMask's provider); the passkey persists in the authenticator.</p>
+      <div class="grid3">
+        <div class="tile">
+          <h3>EdDSA — software key</h3>
+          <div id="id-eddsa"></div>
+        </div>
+        <div class="tile">
+          <h3>EIP712 — MetaMask wallet</h3>
+          <div id="id-eip712"></div>
+          <div style="margin-top: 0.5rem;"><button id="btn-connect-eip712" class="primary">Connect MetaMask</button></div>
+        </div>
+        <div class="tile">
+          <h3>WebAuthn — passkey</h3>
+          <div id="id-webauthn"></div>
+          <div style="margin-top: 0.5rem;"><button id="btn-register" class="primary">Register passkey</button></div>
         </div>
       </div>
-      <div id="identity" style="margin-top: 0.7rem;"></div>
     </div>
 
-    <!-- Steps -->
-    <div class="card step" id="step-1" data-state="ready">
-      <div class="badge">1</div>
-      <div>
-        <h2>Register a passkey</h2>
-        <p class="desc">Creates a resident ES256 (P-256) passkey. Its public key becomes a <code>did:jwk</code> — the issuer DID. No private key ever leaves the authenticator.</p>
-        <code class="call">registerPasskey({ rpId, rpName, userName, requireDeviceBound })</code>
-        <button id="btn-register" class="primary">Register passkey</button>
-        <div class="step-out" id="out-1"></div>
-      </div>
-    </div>
-
-    <div class="card step" id="step-2" data-state="locked">
-      <div class="badge">2</div>
-      <div>
-        <h2>Sign a VC-JWT</h2>
-        <p class="desc">did-jwt builds the JWT and hands the signing input to the passkey. The authenticator prompts for touch/biometric and signs <code>authenticatorData ‖ SHA-256(clientDataJSON)</code> — never the JWT directly.</p>
-        <code class="call">createJWT(payload, { issuer: didJwk, signer: new WebAuthnSigner(identity), alg: 'WebAuthn' })</code>
-        <button id="btn-sign" disabled>Sign credential</button>
-        <div class="step-out" id="out-2"></div>
-      </div>
-    </div>
-
-    <div class="card step" id="step-3" data-state="locked">
-      <div class="badge">3</div>
-      <div>
-        <h2>Verify</h2>
-        <p class="desc">did-jwt resolves the <code>did:jwk</code> to a DID document, then runs the async <code>WebAuthnVerifier</code>, which rebuilds the signed structure and checks the P-256 signature with WebCrypto.</p>
-        <code class="call">verifyJWT(jwt, { resolver }, new WebAuthnVerifier(rpId, { requireDeviceBound }))</code>
-        <div class="toolbar">
-          <button id="btn-verify" disabled>Verify credential</button>
-          <button id="btn-verify-db" disabled title="Forces requireDeviceBound: true regardless of the checkbox">Verify requiring device-bound</button>
-        </div>
-        <div class="step-out" id="out-3"></div>
-      </div>
-    </div>
-
-    <div class="card step" id="step-4" data-state="locked">
-      <div class="badge">4</div>
-      <div>
-        <h2>Present (Verifiable Presentation)</h2>
-        <p class="desc">The holder wraps the VC in a W3C Verifiable Presentation with a fresh <code>nonce</code> and signs the VP with the passkey. Verifying it proves the holder controls the (optionally device-bound) key; the chain walk re-verifies the embedded VC.</p>
-        <code class="call">createJWT(vpPayload, { signer, alg: 'WebAuthn' }) → verifyJWT(vp) → verifyJWT(embedded vc)</code>
-        <button id="btn-present" disabled>Present &amp; verify</button>
-        <div class="step-out" id="out-4"></div>
-      </div>
-    </div>
-
-    <div class="card step" id="step-5" data-state="locked">
-      <div class="badge">5</div>
-      <div>
-        <h2>Replay a stale presentation</h2>
-        <p class="desc">A valid signature is not enough — a presentation must be <em>fresh</em>. The verifier issues a new challenge nonce, but we re-submit the VP from step 4 (bound to the <em>old</em> nonce). The passkey signature still verifies, yet the verifier rejects it because the nonce no longer matches.</p>
-        <code class="call">verifyJWT(oldVp, …) ✓ signature — but payload.nonce ≠ freshChallenge ✗</code>
-        <button id="btn-replay" disabled>Issue new challenge &amp; replay old VP</button>
-        <div class="step-out" id="out-5"></div>
-      </div>
-    </div>
-
-    <div class="card step" id="step-6" data-state="locked">
-      <div class="badge">6</div>
-      <div>
-        <h2>Tamper</h2>
-        <p class="desc">Flip one byte in the payload segment while keeping the original signature, then re-verify. A correct verifier must reject it.</p>
-        <code class="call">verifyJWT(tamperedJwt, …) // expected to throw</code>
-        <button id="btn-tamper" disabled>Tamper &amp; verify</button>
-        <div class="step-out" id="out-6"></div>
-      </div>
-    </div>
-
-    <!-- Inspector -->
+    <!-- Sign -->
     <div class="card">
-      <div class="toolbar" style="justify-content: space-between;">
-        <h2>JWT inspector</h2>
-        <button id="btn-copy-jwt" class="ghost" disabled>Copy JWT</button>
+      <h2>Sign</h2>
+      <p class="desc">Every button calls the same API with the same signer instance — only <code>alg</code> (and the issuer DID) differ.</p>
+      <code class="call">createJWT(payload, { issuer, signer: compositeSigner, alg })</code>
+      <div class="toolbar">
+        <button id="btn-sign-EdDSA">Sign with EdDSA</button>
+        <button id="btn-sign-EIP712" disabled>Sign with EIP712</button>
+        <button id="btn-sign-WebAuthn" disabled>Sign with WebAuthn</button>
       </div>
-      <p class="desc" style="color: var(--muted); font-size: 0.9rem;">The current credential, decoded. This is where the <code>alg: WebAuthn</code> design becomes visible: the signature segment is a JSON blob, and the WebAuthn challenge is the SHA-256 of the signing input.</p>
-      <div id="inspector"><span class="empty">Sign a credential (step 2) to populate.</span></div>
+      <div class="grid3" style="margin-top: 0.8rem;">
+        <div class="tile"><h3>EdDSA JWT</h3><div id="row-EdDSA"></div></div>
+        <div class="tile"><h3>EIP712 JWT</h3><div id="row-EIP712"></div></div>
+        <div class="tile"><h3>WebAuthn JWT</h3><div id="row-WebAuthn"></div></div>
+      </div>
     </div>
 
-    <!-- DID document -->
+    <!-- Verify -->
     <div class="card">
-      <h2>Resolved DID document</h2>
-      <p class="desc" style="color: var(--muted); font-size: 0.9rem;">What the <code>did:jwk</code> resolver returns to <code>verifyJWT</code> — the <code>publicKeyJwk</code> the verifier checks against.</p>
-      <div id="diddoc"><span class="empty">Register a passkey (step 1) to populate.</span></div>
+      <h2>Verify</h2>
+      <p class="desc">
+        The shared <code>CompositeVerifier</code> dispatches each JWT to the module registered for its <code>alg</code>.
+        The <em>software-only</em> button is the negative control: a bare <code>SoftwareVerifier</code> still verifies EdDSA
+        but cannot handle the external algorithms. <em>Domain policy</em> pins the EIP-712 module to a different application
+        domain, rejecting an otherwise-valid signature. <em>Tamper</em> flips one payload byte per JWT.
+      </p>
+      <code class="call">verifyJWT(jwt, { resolver }, compositeVerifier)</code>
+      <div class="toolbar">
+        <button id="btn-verify-all" disabled>Verify all (composite)</button>
+        <button id="btn-verify-software-only" disabled>Verify all (software-only)</button>
+        <button id="btn-domain-policy" disabled>Domain policy (EIP712)</button>
+        <button id="btn-tamper-all" disabled>Tamper &amp; verify all</button>
+      </div>
+      <div class="step-out" id="verify-out"></div>
     </div>
 
     <!-- Log -->
@@ -200,6 +157,6 @@
       <div id="log" style="margin-top: 0.6rem;"><span class="empty">Events appear here, newest first.</span></div>
     </div>
 
-    <script type="module" src="/src/main.ts"></script>
+    <script type="module" src="/src/unified.ts"></script>
   </body>
 </html>

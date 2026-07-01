@@ -3,16 +3,21 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "POC: a WebAuthn passkey signing/verifying VC-JWTs through did-jwt + did-jwt-webauthn-signer (alg: WebAuthn).",
+  "description": "POC: EdDSA + EIP-712 + WebAuthn VC-JWTs through one CompositeSigner/CompositeVerifier pair (index.html), plus the passkey deep-dive (passkey.html).",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node test/smoke.mjs"
   },
   "dependencies": {
+    "@noble/curves": "^1.8.1",
     "did-jwt": "file:../did-jwt",
+    "did-jwt-eip712-signer": "file:../did-jwt-eip712-signer",
     "did-jwt-webauthn-signer": "file:../did-jwt-webauthn-signer",
-    "did-resolver": "^4.1.0"
+    "did-resolver": "^4.1.0",
+    "ethers": "^6.13.5",
+    "ethr-did-resolver": "^11.0.3"
   },
   "devDependencies": {
     "typescript": "~5.6.3",
