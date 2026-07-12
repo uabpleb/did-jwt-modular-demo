@@ -87,10 +87,11 @@ export async function inspectJwt(jwt: string): Promise<JwtInspection> {
   }
 
   if ((header as { alg?: string }).alg === 'WebAuthn') {
-    const blob = JSON.parse(b64urlToString(s)) as { s: string; a: string; c: string }
-    const clientData = JSON.parse(b64urlToString(blob.c))
-    const authData = b64urlToBytes(blob.a)
+    const blob = JSON.parse(b64urlToString(s)) as { signature: string; authenticatorData: string; clientDataJSON: string }
+    const clientData = JSON.parse(b64urlToString(blob.clientDataJSON))
+    const authData = b64urlToBytes(blob.authenticatorData)
 
+    
     // The signer hashes the signing input (`header.payload`) into the challenge.
     const signingInput = new TextEncoder().encode(`${h}.${p}`)
     const expectedChallenge = bytesToB64url(new Uint8Array(await crypto.subtle.digest('SHA-256', signingInput)))
@@ -101,7 +102,7 @@ export async function inspectJwt(jwt: string): Promise<JwtInspection> {
       rpIdHash: hex(authData.slice(0, 32), 32),
       flags: parseFlags(authData[32]),
       signCount: new DataView(authData.buffer, authData.byteOffset).getUint32(33, false),
-      signatureDerHex: hex(b64urlToBytes(blob.s), 12),
+      signatureDerHex: hex(b64urlToBytes(blob.signature), 12),
       challengeBindsSigningInput: actualChallenge === expectedChallenge,
       expectedChallenge,
       actualChallenge,

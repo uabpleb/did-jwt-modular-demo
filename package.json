@@ -12,12 +12,12 @@
   },
   "dependencies": {
     "@noble/curves": "^1.8.1",
+    "@scure/base": "^2.2.0",
+    "buffer": "^6.0.3",
     "did-jwt": "file:../did-jwt",
-    "did-jwt-eip712-signer": "file:../did-jwt-eip712-signer",
+    "did-jwt-vc": "file:../did-jwt-vc",
     "did-jwt-webauthn-signer": "file:../did-jwt-webauthn-signer",
-    "did-resolver": "^4.1.0",
-    "ethers": "^6.13.5",
-    "ethr-did-resolver": "^11.0.3"
+    "did-resolver": "^4.1.0"
   },
   "devDependencies": {
     "typescript": "~5.6.3",

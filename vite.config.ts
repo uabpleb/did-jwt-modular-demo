@@ -14,10 +14,7 @@ export default defineConfig({
   },
   build: {
     rollupOptions: {
-      input: {
-        index: resolve(root, 'index.html'),
-        passkey: resolve(root, 'passkey.html'),
-      },
+      input: resolve(root, 'index.html'),
     },
   },
 })

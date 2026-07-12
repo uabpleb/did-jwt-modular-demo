@@ -1,12 +1,17 @@
+// buffer polyfill
+import { Buffer } from 'buffer'
+;(window as any).Buffer = Buffer
+
 import { createJWT, verifyJWT } from 'did-jwt'
 import { Resolver } from 'did-resolver'
 import {
-  registerPasskey,
   WebAuthnSigner,
   WebAuthnVerifier,
   WEBAUTHN_ALG,
-  type PasskeyIdentity,
+  BrowserAuthenticatorBackend,
+  base64urlDecode,
 } from 'did-jwt-webauthn-signer'
+import { registerPasskey, type PasskeyIdentity } from './registration'
 import { getResolver as jwkResolver } from './did-jwk-resolver'
 import { inspectJwt, type JwtInspection } from './inspect'
 
@@ -15,8 +20,6 @@ const STORAGE_KEY = 'passkey-identity'
 
 const rpId = location.hostname // 'localhost' in dev
 
-// The real did-resolver registry: dispatches by DID method, caches, and returns
-// spec DIDResolutionResults. Register more methods (ethr/web/key) here as needed.
 const resolver = new Resolver(jwkResolver())
 
 const $ = (id: string) => document.getElementById(id) as HTMLElement
@@ -34,7 +37,6 @@ const log = (msg: string, obj?: unknown) => {
   out.prepend(entry)
 }
 
-// Per-step inline output (success/failure right under the button).
 const stepOut = (n: number, html: string) => {
   const el = $(`out-${n}`)
   el.innerHTML = html
@@ -43,8 +45,6 @@ const stepOut = (n: number, html: string) => {
 
 let identity: PasskeyIdentity | null = loadIdentity()
 let lastJwt: string | null = null
-// The VP from step 4 + the nonce it was bound to — kept so the replay step can
-// re-submit a stale presentation against a fresh verifier challenge.
 let presentedVp: { jwt: string; nonce: string } | null = null
 
 function loadIdentity(): PasskeyIdentity | null {
@@ -52,8 +52,14 @@ function loadIdentity(): PasskeyIdentity | null {
   return raw ? (JSON.parse(raw) as PasskeyIdentity) : null
 }
 
+// Small helper — every signing operation needs the same
+// backend-from-identity conversion. Centralized so it's only written once.
+function signerFromIdentity(id: PasskeyIdentity): WebAuthnSigner {
+  const backend = new BrowserAuthenticatorBackend(base64urlDecode(id.credentialId).buffer)
+  return new WebAuthnSigner(backend)
+}
+
 // ---- Step state machine -------------------------------------------------
-// 1 register → unlocks 2 sign → unlocks 3 verify, 4 present, 5 tamper.
 type StepState = 'locked' | 'ready' | 'done'
 const setStep = (n: number, state: StepState) => $(`step-${n}`).setAttribute('data-state', state)
 const enable = (id: string, on: boolean) => (($(id) as HTMLButtonElement).disabled = !on)
@@ -195,7 +201,7 @@ $('btn-sign').addEventListener('click', async () => {
         credentialSubject: { passkey: true, demo: 'did-jwt WebAuthn signer' },
       },
     }
-    const signer = new WebAuthnSigner(identity)
+    const signer = signerFromIdentity(identity)
     lastJwt = await createJWT(payload, { issuer: identity.didJwk, signer, alg: WEBAUTHN_ALG })
     presentedVp = null
     await renderInspector(lastJwt)
@@ -214,12 +220,9 @@ $('btn-verify').addEventListener('click', async () => {
     const result = await verifyJWT(
       lastJwt,
       { resolver },
-      new WebAuthnVerifier(identity.rpId, { requireDeviceBound: deviceBoundRequired() }),
+      new WebAuthnVerifier(identity.rpId, { origin: location.origin, requireDeviceInbound: deviceBoundRequired() }),
     )
     setStep(3, 'done')
-    // Echo the verifier's own challenge-binding step: clientData.challenge must
-    // equal SHA-256(signing input). This is what proves the assertion is over
-    // *this* JWT and not some other message.
     const info = await inspectJwt(lastJwt)
     const wa = info.webauthn
     const chal = wa
@@ -242,9 +245,7 @@ $('btn-verify').addEventListener('click', async () => {
 $('btn-verify-db').addEventListener('click', async () => {
   if (!lastJwt || !identity) return
   try {
-    // Force device-bound regardless of the checkbox: every assertion must carry
-    // Backup Eligibility = 0. A syncable (BE=1) passkey is refused here.
-    await verifyJWT(lastJwt, { resolver }, new WebAuthnVerifier(identity.rpId, { requireDeviceBound: true }))
+    await verifyJWT(lastJwt, { resolver }, new WebAuthnVerifier(identity.rpId, { origin: location.origin, requireDeviceInbound: true }))
     stepOut(
       3,
       `<span class="ok">✓ Accepted under requireDeviceBound: true.</span> This passkey is device-bound (BE=0)${
@@ -275,17 +276,15 @@ $('btn-present').addEventListener('click', async () => {
         verifiableCredential: [lastJwt],
       },
     }
-    const signer = new WebAuthnSigner(identity)
+    const signer = signerFromIdentity(identity)
     const vpJwt = await createJWT(vpPayload, { issuer: identity.didJwk, signer, alg: WEBAUTHN_ALG })
     log('✅ Holder signed a Verifiable Presentation (passkey-bound).', { nonce, vp: vpJwt })
 
     const vpResult = await verifyJWT(
       vpJwt,
       { resolver },
-      new WebAuthnVerifier(identity.rpId, { requireDeviceBound: deviceBoundRequired() }),
+      new WebAuthnVerifier(identity.rpId, { origin: location.origin, requireDeviceInbound: deviceBoundRequired() }),
     )
-    // App-level freshness check: verifyJWT proves the signature; the verifier must
-    // separately confirm the presentation carries the nonce it challenged with.
     const gotNonce = (vpResult.payload as { nonce?: string }).nonce
     const nonceOk = gotNonce === nonce
     const vp = (vpResult.payload as { vp?: { verifiableCredential?: string[] } }).vp
@@ -296,7 +295,7 @@ $('btn-present').addEventListener('click', async () => {
       const vcResult = await verifyJWT(
         vc,
         { resolver },
-        new WebAuthnVerifier(identity.rpId, { requireDeviceBound: deviceBoundRequired() }),
+        new WebAuthnVerifier(identity.rpId, { origin: location.origin, requireDeviceInbound: deviceBoundRequired() }),
       )
       vcLine = `<br>↳ embedded VC also verified (issuer = <span class="mono">${esc(String(vcResult.issuer))}</span>)`
       log('✅ Embedded VC also verified (issuer signature).', { issuer: vcResult.issuer })
@@ -325,12 +324,9 @@ $('btn-present').addEventListener('click', async () => {
 $('btn-replay').addEventListener('click', async () => {
   if (!presentedVp || !identity) return
   try {
-    // The verifier starts a fresh interaction and issues a new challenge nonce.
     const freshChallenge = crypto.randomUUID()
-    // The attacker replays the OLD presentation — still validly signed by the passkey.
-    const result = await verifyJWT(presentedVp.jwt, { resolver }, new WebAuthnVerifier(identity.rpId))
+    const result = await verifyJWT(presentedVp.jwt, { resolver }, new WebAuthnVerifier(identity.rpId, {origin: location.origin}))
     const presentedNonce = (result.payload as { nonce?: string }).nonce
-    // verifyJWT confirmed the signature; freshness is a separate, app-level check.
     if (presentedNonce === freshChallenge) {
       stepOut(5, `<span class="warn">⚠️ Stale nonce matched a fresh challenge — astronomically unlikely; treat as a bug.</span>`)
       return
@@ -352,8 +348,6 @@ $('btn-replay').addEventListener('click', async () => {
 
 $('btn-tamper').addEventListener('click', async () => {
   if (!lastJwt || !identity) return
-  // Flip the last two chars of the payload segment (keep the signature) and show
-  // exactly which bytes changed.
   const [h, p, s] = lastJwt.split('.')
   const flipped = p.slice(-2) === 'AA' ? 'AB' : 'AA'
   const tamperedPayload = `${p.slice(0, -2)}${flipped}`
@@ -367,7 +361,7 @@ $('btn-tamper').addEventListener('click', async () => {
     await verifyJWT(
       tampered,
       { resolver },
-      new WebAuthnVerifier(identity.rpId, { requireDeviceBound: deviceBoundRequired() }),
+      new WebAuthnVerifier(identity.rpId, { origin: location.origin, requireDeviceInbound: deviceBoundRequired() }),
     )
     stepOut(6, `<span class="warn">⚠️ Tampered JWT unexpectedly verified — that would be a bug.</span>${diff}`)
     log('⚠️ Tampered JWT unexpectedly verified — that would be a bug.')
