@@ -37,6 +37,7 @@ export interface RegisterPasskeyOptions {
 }
 
 export interface PasskeyIdentity {
+    // TODO: review if all these are necessary
     credentialId: string   // base64url — JSON-safe
     publicKey: string       // base64url — JSON-safe
     didJwk: string
@@ -44,6 +45,7 @@ export interface PasskeyIdentity {
     rpId: string
     coseAlgorithm: number
     deviceBound?: boolean
+    aaguid?: string //self-reported by the authenticator at registration, not cryptographically verified.
 }
 
 export async function registerPasskey(options: RegisterPasskeyOptions): Promise<PasskeyIdentity> {
@@ -82,9 +84,14 @@ export async function registerPasskey(options: RegisterPasskeyOptions): Promise<
     const didKey = p256PublicKeyToDidKey(publicKeyBytes)
 
     let deviceBound: boolean | undefined
+    let aaguid: string|undefined
     if (typeof response.getAuthenticatorData === 'function') {
         const authData = new Uint8Array(response.getAuthenticatorData())
-        deviceBound = !parseAuthenticatorData(authData).flags.backupEligible
+        const parsed = parseAuthenticatorData(authData)
+        if (parsed.attestedCredentialData) {
+            aaguid = formatAaguid(parsed.attestedCredentialData.aaguid)
+        }
+        deviceBound = !parsed.flags.backupEligible
     }
 
     if (options.requireDeviceBound && deviceBound === false) {
@@ -99,6 +106,7 @@ export async function registerPasskey(options: RegisterPasskeyOptions): Promise<
         rpId: options.rpId,
         coseAlgorithm,
         deviceBound,
+        aaguid
     }
 }
 
@@ -114,7 +122,7 @@ export function p256PublicKeyToDidKey(publicKey: Uint8Array): string {
     let compressed: Uint8Array
 
     if (publicKey.length === 65 && publicKey[0] === 0x04) {
-        compressed = p256.Point.fromHex(publicKey).toBytes(true)
+        compressed = p256.Point.fromBytes(publicKey).toBytes(true)
     } else if (publicKey.length === 33 && (publicKey[0] === 0x02 || publicKey[0] === 0x03)) {
         compressed = publicKey
     } else {
@@ -128,4 +136,14 @@ export function p256PublicKeyToDidKey(publicKey: Uint8Array): string {
     multicodecKey.set(compressed, P256_MULTICODEC_PREFIX.length)
 
     return `did:key:z${base58.encode(multicodecKey)}`
+}
+
+/**
+ * Formats a 16-byte AAGUID as a canonical UUID string (8-4-4-4-12 hex groups).
+ * Self-reported by the authenticator — see thesis note on the attestation gap:
+ * this value carries no cryptographic guarantee of authenticity.
+ */
+function formatAaguid(bytes: Uint8Array): string {
+    const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
 }
