@@ -147,3 +147,33 @@ function formatAaguid(bytes: Uint8Array): string {
     const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
     return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
 }
+
+/**
+ * Resolves which resident credential the user selects via the browser's native
+ * passkey picker — WITHOUT performing any JWT-binding ceremony.
+ *
+ * Exists to solve an ordering conflict: WebAuthnSigner's challenge binding
+ * requires `iss` (the signer's DID) to already be in the JWT payload before
+ * the signing ceremony starts, but discoverable credentials don't reveal
+ * *which* credential (and therefore which DID) until the OS picker resolves.
+ * So identity must be established in a prior, separate ceremony using a
+ * throwaway local challenge — nothing meaningful is bound to it.
+ *
+ * Note: this demo resolves identity via local storage only (see App.tsx). A
+ * real deployment would resolve identity server-side (e.g. from the
+ * assertion's userHandle), not from the browser's own storage.
+ */
+export async function resolveDiscoverableCredential(rpId: string): Promise<{ credentialId: string }> {
+    if (typeof navigator === 'undefined' || !navigator.credentials) {
+        throw new Error('resolveDiscoverableCredential: navigator.credentials is not available in this environment')
+    }
+    const assertion = (await navigator.credentials.get({
+        publicKey: {
+            challenge: crypto.getRandomValues(new Uint8Array(32)),
+            rpId,
+            userVerification: 'required',
+            // No allowCredentials — the browser enumerates resident credentials and shows the picker.
+        },
+    })) as PublicKeyCredential
+    return { credentialId: base64urlEncode(new Uint8Array(assertion.rawId)) }
+}

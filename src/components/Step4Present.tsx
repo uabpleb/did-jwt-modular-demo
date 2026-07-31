@@ -43,9 +43,7 @@ export default function Step4Present({ identity, jwt, resolver, deviceBoundRequi
       log('✅ Holder signed a Verifiable Presentation (passkey-bound).', { nonce, vp: vpJwt })
 
       const verifierOpts = { origin: location.origin, requireDeviceBound: deviceBoundRequired }
-      console.log('About to verify VP...')
       const vpResult = await verifyJWT(vpJwt, { resolver }, new WebAuthnVerifier(identity.rpId, verifierOpts))
-      console.log('VP verified OK')
 
       const gotNonce = (vpResult.payload as { nonce?: string }).nonce
       const nonceOk = gotNonce === nonce
@@ -54,10 +52,7 @@ export default function Step4Present({ identity, jwt, resolver, deviceBoundRequi
 
       let vcLine = ''
       if (typeof vc === 'string') {
-        console.log('About to verify embedded VC...')
         const vcResult = await verifyJWT(vc, { resolver }, new WebAuthnVerifier(identity.rpId, verifierOpts))
-        console.log('VC verified OK')
-
         vcLine = ` ↳ embedded VC also verified (issuer = ${vcResult.issuer})`
         log('✅ Embedded VC also verified (issuer signature).', { issuer: vcResult.issuer })
       }

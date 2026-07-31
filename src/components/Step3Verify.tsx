@@ -19,11 +19,6 @@ export default function Step3Verify({ identity, jwt, resolver, deviceBoundRequir
   const handleVerify = async () => {
     if (!jwt || !identity) return
 
-    // debug
-    console.log('identity.didJwk', identity.didJwk)
-    console.log('identity.rpId', identity.rpId, 'vs location.hostname', location.hostname)
-
-
     try {
       const result = await verifyJWT(
         jwt,
@@ -42,11 +37,6 @@ export default function Step3Verify({ identity, jwt, resolver, deviceBoundRequir
   const handleVerifyDeviceBound = async () => {
     if (!jwt || !identity) return
     try {
-      // DEBUG
-      console.log('identity.didJwk', identity.didJwk)
-      console.log('identity.rpId', identity.rpId, 'vs location.hostname', location.hostname)
-
-
       // Always forces requireDeviceBound: true, regardless of the checkbox —
       // demonstrates rejection of syncable (BE=1) credentials under a strict policy.
       await verifyJWT(

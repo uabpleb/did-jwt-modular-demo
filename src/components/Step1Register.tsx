@@ -13,8 +13,11 @@ const rpId = location.hostname
 
 export default function Step1Register({deviceBoundRequired, onRegistered, log}: Props) {
     const [result, setResult] = useState<StepResult>({ok: true, msg: ''})
+    const [pending, setPending] = useState(false)
 
     const handleClick = async () => {
+        if(pending) return
+        setPending(true)
         try {
             const identity = await registerPasskey({
                 rpId,
@@ -28,13 +31,17 @@ export default function Step1Register({deviceBoundRequired, onRegistered, log}: 
             const errMsg = (e as Error).message
             setResult({ok: false, msg: errMsg})
             log('Step 1: ' + errMsg)
+        } finally {
+            setPending(false)
         }
     }
 
     return (
         <div className="step">
             <h2>1. Register a passkey</h2>
-            <button type="button" onClick={handleClick}>Register a passkey</button>
+            <button type="button" onClick={handleClick} disabled={pending}>
+                {pending ? 'Registering...': 'Register a passkey'}
+            </button>
             {result && <p className={String(result.ok)}>{result.msg}</p>}
         </div>
     )
