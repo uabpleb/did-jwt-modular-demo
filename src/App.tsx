@@ -29,26 +29,13 @@ export interface PresentedVp {
   nonce: string
 }
 
-/*function loadIdentities(): PasskeyIdentity[] {
-  const raw = localStorage.getItem(STORAGE_KEY)
-  return raw ? (JSON.parse(raw) as PasskeyIdentity[]) : []
-}*/
-function loadIdentities(): PasskeyIdentity[] {
-  const raw = localStorage.getItem(STORAGE_KEY)
-  if (!raw) return []
-  try {
-    const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? parsed : []
-  } catch {
-    return []
-  }
-}
-
 const resolver = new Resolver(getJwkResolver())
 
 function App() {
     const [identities, setIdentities] = useState<PasskeyIdentity[]>(loadIdentities())
-    const [activeIdentity, setActiveIdentity] = useState<PasskeyIdentity | null>(identities[0] ?? null)
+    const [issuerIdentity, setIssuerIdentity] = useState<PasskeyIdentity | null>(identities[0] ?? null)
+    const [holderIdentity, setHolderIdentity] = useState<PasskeyIdentity | null>(identities[0] ?? null)
+    //const [activeIdentity, setActiveIdentity] = useState<PasskeyIdentity | null>(identities[0] ?? null)
     const [lastJwt, setLastJwt] = useState<string|null>(null)
     const [presentedVp, setPresentedVp] = useState<PresentedVp|null>(null)
     const [deviceBoundRequired, setDeviceBoundRequired] = useState<boolean>(false)
@@ -59,7 +46,10 @@ function App() {
       const next = [...identities, id]
       localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
       setIdentities(next)
-      setActiveIdentity(id)
+      // First registration seeds both roles; later ones don't silently steal a role
+      // out from under whatever the user already selected.
+      if (!issuerIdentity) setIssuerIdentity(id)
+      if (!holderIdentity) setHolderIdentity(id)
       setLastJwt(null)
       setPresentedVp(null)
     }
@@ -67,13 +57,18 @@ function App() {
     const handleReset = () => {
       localStorage.removeItem(STORAGE_KEY)
       setIdentities([])
-      setActiveIdentity(null)
+      setHolderIdentity(null)
+      setIssuerIdentity(null)
       setLastJwt(null)
       setPresentedVp(null)
     }
 
-    const handleIdentityResolved = (id: PasskeyIdentity) => {
-      setActiveIdentity(id)
+    const handleIssuerResolved = (id: PasskeyIdentity) => {
+      setIssuerIdentity(id)
+    }
+
+    const handleHolderResolved = (id: PasskeyIdentity) => {
+      setHolderIdentity(id)
     }
 
 
@@ -93,18 +88,25 @@ function App() {
 
         <button onClick={handleReset} disabled={identities.length === 0}>Reset</button>
 
-        <IdentityPanel identity={activeIdentity} />
-        
-        <Step1Register deviceBoundRequired={deviceBoundRequired} onRegistered={handleRegistered} log={log} />
-        <Step2Sign identity={activeIdentity} identities={identities} onIdentityResolved={handleIdentityResolved} onSigned={setLastJwt} log={log} />
-        <Step3Verify deviceBoundRequired={deviceBoundRequired} identity={activeIdentity} jwt={lastJwt} resolver={resolver} log={log} />
-        <Step4Present deviceBoundRequired={deviceBoundRequired} identity={activeIdentity} jwt={lastJwt} resolver={resolver} onPresented={setPresentedVp} log={log} />
-        <SdIdentityPanel identity={activeIdentity} jwt={lastJwt} resolver={resolver} deviceBoundRequired={deviceBoundRequired} log={log} />
-        <Step5Replay identity={activeIdentity} presentedVp={presentedVp} resolver={resolver} log={log} />
-        <Step6Tamper identity={activeIdentity} jwt={lastJwt} resolver={resolver} deviceBoundRequired={deviceBoundRequired} log={log} />
+        <IdentitySelect label="Subject/ Issuer identity" identities={identities} value={issuerIdentity} onChange={setIssuerIdentity} />
+        <IdentitySelect label="Holder identity" identities={identities} value={holderIdentity} onChange={setHolderIdentity} />
 
-        <PresentedVpPanel presentedVp={presentedVp} />
-        <JwtPanel jwt={lastJwt} />
+        <div className="layout">
+          <div className="steps-column">
+            <Step1Register deviceBoundRequired={deviceBoundRequired} onRegistered={handleRegistered} log={log} />
+            <Step2Sign identity={issuerIdentity} identities={identities} onIdentityResolved={handleIssuerResolved} onSigned={setLastJwt} log={log} />
+            <Step3Verify deviceBoundRequired={deviceBoundRequired} identity={issuerIdentity} jwt={lastJwt} resolver={resolver} log={log} />
+            <Step4Present deviceBoundRequired={deviceBoundRequired} holderIdentity={holderIdentity} jwt={lastJwt} resolver={resolver} onPresented={setPresentedVp} log={log} />
+            <SdIdentityPanel identity={holderIdentity} jwt={lastJwt} resolver={resolver} deviceBoundRequired={deviceBoundRequired} log={log} />
+            <Step5Replay identity={holderIdentity} presentedVp={presentedVp} resolver={resolver} log={log} />
+            <Step6Tamper identity={issuerIdentity} jwt={lastJwt} resolver={resolver} deviceBoundRequired={deviceBoundRequired} log={log} />
+          </div>
+          <div className="helper-column">
+            <IdentityPanel identity={issuerIdentity} />
+            <PresentedVpPanel presentedVp={presentedVp} />
+            <JwtPanel jwt={lastJwt} />
+          </div>
+        </div>
 
       </div>
 
@@ -112,3 +114,45 @@ function App() {
 }
 
 export default App
+
+
+/*function loadIdentities(): PasskeyIdentity[] {
+  const raw = localStorage.getItem(STORAGE_KEY)
+  return raw ? (JSON.parse(raw) as PasskeyIdentity[]) : []
+}*/
+function loadIdentities(): PasskeyIdentity[] {
+  const raw = localStorage.getItem(STORAGE_KEY)
+  if (!raw) return []
+  try {
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
+function IdentitySelect({ label, identities, value, onChange }: {
+  label: string
+  identities: PasskeyIdentity[]
+  value: PasskeyIdentity | null
+  onChange: (id: PasskeyIdentity) => void
+}) {
+  return (
+    <label style={{ display: 'block', margin: '6px 0' }}>
+      {label}{' '}
+      <select
+        value={value?.credentialId ?? ''}
+        onChange={(e) => {
+          const found = identities.find((i) => i.credentialId === e.target.value)
+          if (found) onChange(found)
+        }}
+      >
+        {identities.map((i) => (
+          <option key={i.credentialId} value={i.credentialId}>
+            {i.didJwk.slice(0, 28)}…
+          </option>
+        ))}
+      </select>
+    </label>
+  )
+}

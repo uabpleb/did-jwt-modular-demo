@@ -7,7 +7,7 @@ import type { StepResult } from './step-types'
 import type { PresentedVp } from '../App'
 
 interface Props {
-  identity: PasskeyIdentity | null
+  holderIdentity: PasskeyIdentity | null
   jwt: string | null
   resolver: Resolver
   deviceBoundRequired: boolean
@@ -15,14 +15,14 @@ interface Props {
   log: (msg: string, obj?: unknown) => void
 }
 
-export default function Step4Present({ identity, jwt, resolver, deviceBoundRequired, onPresented, log }: Props) {
+export default function Step4Present({ holderIdentity, jwt, resolver, deviceBoundRequired, onPresented, log }: Props) {
   const [status, setStatus] = useState<StepResult | null>(null)
 
-  // TEST
+  // DEBUG
   const [busy, setBusy] = useState(false)
 
   const handleClick = async () => {
-    if (busy || !jwt || !identity) return
+    if (busy || !jwt || !holderIdentity) return
     setBusy(true)
 
     try {
@@ -37,13 +37,13 @@ export default function Step4Present({ identity, jwt, resolver, deviceBoundRequi
           verifiableCredential: [jwt],
         },
       }
-      const backend = new BrowserAuthenticatorBackend(base64urlDecode(identity.credentialId).buffer)
+      const backend = new BrowserAuthenticatorBackend(base64urlDecode(holderIdentity.credentialId).buffer)
       const signer = new WebAuthnSigner(backend)
-      const vpJwt = await createJWT(vpPayload, { issuer: identity.didJwk, signer, alg: WEBAUTHN_ALG })
+      const vpJwt = await createJWT(vpPayload, { issuer: holderIdentity.didJwk, signer, alg: WEBAUTHN_ALG })
       log('✅ Holder signed a Verifiable Presentation (passkey-bound).', { nonce, vp: vpJwt })
 
       const verifierOpts = { origin: location.origin, requireDeviceBound: deviceBoundRequired }
-      const vpResult = await verifyJWT(vpJwt, { resolver }, new WebAuthnVerifier(identity.rpId, verifierOpts))
+      const vpResult = await verifyJWT(vpJwt, { resolver }, new WebAuthnVerifier(holderIdentity.rpId, verifierOpts))
 
       const gotNonce = (vpResult.payload as { nonce?: string }).nonce
       const nonceOk = gotNonce === nonce
@@ -52,9 +52,20 @@ export default function Step4Present({ identity, jwt, resolver, deviceBoundRequi
 
       let vcLine = ''
       if (typeof vc === 'string') {
-        const vcResult = await verifyJWT(vc, { resolver }, new WebAuthnVerifier(identity.rpId, verifierOpts))
-        vcLine = ` ↳ embedded VC also verified (issuer = ${vcResult.issuer})`
-        log('✅ Embedded VC also verified (issuer signature).', { issuer: vcResult.issuer })
+        const vcResult = await verifyJWT(vc, { resolver }, new WebAuthnVerifier(holderIdentity.rpId, verifierOpts))
+        const vcSubject = (vcResult.payload as { sub?: string }).sub
+        
+
+        if (vpResult.issuer !== vcSubject) {
+          throw new Error(`Holder binding failed: VP signed by ${vpResult.issuer}, but VC names subject ${vcSubject}`)
+        }
+
+        vcLine = ` ↳ embedded VC also verified (issuer = ${vcResult.issuer}) — holder matches VC subject ✓`
+
+        log('✅ Embedded VC also verified (issuer signature, holder binding OK).', {
+          issuer: vcResult.issuer,
+          vcSubject,
+        })
       }
 
       onPresented({ jwt: vpJwt, nonce })
@@ -65,7 +76,7 @@ export default function Step4Present({ identity, jwt, resolver, deviceBoundRequi
       log('✅ verifyJWT() accepted the VP — holder key verified.', {
         verified: vpResult.verified,
         holder: vpResult.issuer,
-        nonce,
+        nonce: nonce,
         embeddedCredentials: vp?.verifiableCredential?.length ?? 0,
       })
     } catch (e) {
@@ -80,7 +91,7 @@ export default function Step4Present({ identity, jwt, resolver, deviceBoundRequi
   return (
     <div className="step">
       <h2>4. Present (Verifiable Presentation)</h2>
-      <button type="button" onClick={handleClick} disabled={!jwt}>Present & verify</button>
+      <button type="button" onClick={handleClick} disabled={!jwt || !holderIdentity}>Present & verify</button>
       {status && <p className={status.ok ? 'ok' : 'bad'}>{status.msg}</p>}
     </div>
   )

@@ -12,6 +12,7 @@ body {
 }
 
 #center {
+  text-align: left;
   max-width: 900px;
   margin: 0 auto;
   padding: 20px;
@@ -196,5 +197,40 @@ pre {
   }
   .step {
     padding: 18px;
+  }
+}
+
+
+.layout {
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  gap: 24px;
+  align-items: start;
+}
+
+.steps-column {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-width: 0; /* lets long JSON/pre content shrink instead of overflowing the grid track */
+}
+
+.helper-column {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  position: sticky;
+  top: 20px;
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+}
+
+@media (max-width: 900px) {
+  .layout {
+    grid-template-columns: 1fr; /* stack on narrow screens — sticky sidebar doesn't make sense there */
+  }
+  .helper-column {
+    position: static;
+    max-height: none;
   }
 }

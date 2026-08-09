@@ -1,3 +1,5 @@
+import DecodedJwt from "./DecodedJwt"
+
 interface Props {
   jwt: string | null
 }
@@ -7,7 +9,7 @@ export default function JwtPanel({ jwt }: Props) {
   return (
     <div className="step">
       <h2>Last signed JWT</h2>
-      <p className="mono" style={{ wordBreak: 'break-all' }}>{jwt}</p>
+      <DecodedJwt jwt={jwt} />
     </div>
   )
 }
