@@ -72,7 +72,12 @@ function buildVcPayload(didJwk: string) {
     vc: {
       '@context': ['https://www.w3.org/2018/credentials/v1'],
       type: ['VerifiableCredential'],
-      credentialSubject: { passkey: true, demo: 'did-jwt WebAuthn signer' },
+      credentialSubject: { 
+        passkey: true,
+        demo: 'did-jwt WebAuthn signer',
+        memberSince: '2024-01-15',
+        verificationLevel: 'gold'
+      },
     },
   }
 }

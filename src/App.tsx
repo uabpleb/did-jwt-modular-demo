@@ -20,6 +20,7 @@ import Step6Tamper from './components/Step6Tamper'
 import IdentityPanel from './components/IdentityPanel'
 import PresentedVpPanel from './components/PresentedVpPanel'
 import JwtPanel from './components/JwtPanel'
+import SdIdentityPanel from './components/SdIdentityPanel'
 
 const STORAGE_KEY = 'passkey-identities'
 
@@ -28,11 +29,11 @@ export interface PresentedVp {
   nonce: string
 }
 
-function loadIdentities(): PasskeyIdentity[] {
+/*function loadIdentities(): PasskeyIdentity[] {
   const raw = localStorage.getItem(STORAGE_KEY)
   return raw ? (JSON.parse(raw) as PasskeyIdentity[]) : []
-}
-/*function loadIdentities(): PasskeyIdentity[] {
+}*/
+function loadIdentities(): PasskeyIdentity[] {
   const raw = localStorage.getItem(STORAGE_KEY)
   if (!raw) return []
   try {
@@ -41,7 +42,7 @@ function loadIdentities(): PasskeyIdentity[] {
   } catch {
     return []
   }
-}*/
+}
 
 const resolver = new Resolver(getJwkResolver())
 
@@ -98,6 +99,7 @@ function App() {
         <Step2Sign identity={activeIdentity} identities={identities} onIdentityResolved={handleIdentityResolved} onSigned={setLastJwt} log={log} />
         <Step3Verify deviceBoundRequired={deviceBoundRequired} identity={activeIdentity} jwt={lastJwt} resolver={resolver} log={log} />
         <Step4Present deviceBoundRequired={deviceBoundRequired} identity={activeIdentity} jwt={lastJwt} resolver={resolver} onPresented={setPresentedVp} log={log} />
+        <SdIdentityPanel identity={activeIdentity} jwt={lastJwt} resolver={resolver} deviceBoundRequired={deviceBoundRequired} log={log} />
         <Step5Replay identity={activeIdentity} presentedVp={presentedVp} resolver={resolver} log={log} />
         <Step6Tamper identity={activeIdentity} jwt={lastJwt} resolver={resolver} deviceBoundRequired={deviceBoundRequired} log={log} />
 
