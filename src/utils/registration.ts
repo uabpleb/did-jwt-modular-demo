@@ -17,10 +17,14 @@ import {
     p256PublicKeyToDidJwk,
     parseAuthenticatorData,
     base64urlEncode,
+    base64urlDecode,
+    verifyAttestation,
+    type AttestationResult
 } from 'did-jwt-webauthn-signer'
 
 import { p256 } from '@noble/curves/nist.js'
 import { base58 } from '@scure/base'
+import { sha256 } from '@noble/hashes/sha2.js'
 
 export const WEBAUTHN_ALG = 'WebAuthn'
 
@@ -34,6 +38,7 @@ export interface RegisterPasskeyOptions {
     rpName: string
     userName: string
     requireDeviceBound?: boolean
+    requestAttestation?: boolean,
 }
 
 export interface PasskeyIdentity {
@@ -46,6 +51,8 @@ export interface PasskeyIdentity {
     coseAlgorithm: number
     deviceBound?: boolean
     aaguid?: string //self-reported by the authenticator at registration, not cryptographically verified.
+    attestationObjectRaw?: string,
+    clientDataJSONRaw?: string,
 }
 
 export async function registerPasskey(options: RegisterPasskeyOptions): Promise<PasskeyIdentity> {
@@ -64,10 +71,19 @@ export async function registerPasskey(options: RegisterPasskeyOptions): Promise<
             challenge: crypto.getRandomValues(new Uint8Array(32)),
             pubKeyCredParams: SUPPORTED_COSE_ALGS,
             authenticatorSelection: { userVerification: 'required', residentKey: 'required' },
+            ...(options.requestAttestation ? { attestation: 'direct' as const} : {})
         },
     })) as PublicKeyCredential
 
     const response = credential.response as AuthenticatorAttestationResponse
+
+    let attestationObjectRaw: string|undefined
+    let clientDataJSONRaw: string|undefined
+    if (response.attestationObject) {
+        attestationObjectRaw = base64urlEncode(new Uint8Array(response.attestationObject))
+        clientDataJSONRaw = base64urlEncode(new Uint8Array(response.clientDataJSON))
+    }
+
     const coseAlgorithm = response.getPublicKeyAlgorithm()
 
     if (coseAlgorithm !== -7) {
@@ -106,10 +122,29 @@ export async function registerPasskey(options: RegisterPasskeyOptions): Promise<
         rpId: options.rpId,
         coseAlgorithm,
         deviceBound,
-        aaguid
+        aaguid,
+        attestationObjectRaw,
+        clientDataJSONRaw
     }
 }
 
+
+// Pinned trust anchors — hardcoded, never fetched over the network (see attestation.ts's
+// module doc for why). Empty for now: add Yubico's published root cert here once available.
+//TODO: load from file
+const PINNED_ATTESTATION_ROOTS: Uint8Array[] = [
+    base64urlDecode(
+        'MIIB1DCCAXqgAwIBAgIBATAKBggqhkjOPQQDAjBgMQswCQYDVQQGEwJVUzERMA8GA1UECgwIQ2hyb21pdW0xIjAgBgNVBAsMGUF1dGhlbnRpY2F0b3IgQXR0ZXN0YXRpb24xGjAYBgNVBAMMEUJhdGNoIENlcnRpZmljYXRlMB4XDTE3MDcxNDAyNDAwMFoXDTQ2MDgwNDE0NTk1N1owYDELMAkGA1UEBhMCVVMxETAPBgNVBAoMCENocm9taXVtMSIwIAYDVQQLDBlBdXRoZW50aWNhdG9yIEF0dGVzdGF0aW9uMRowGAYDVQQDDBFCYXRjaCBDZXJ0aWZpY2F0ZTBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABI1hfmXJUI5kvMVnOsgqZ5naPBRGaCwljEY//99Y39L6Pmw3i1PXlcSk3/tBme3Xhi8jq68CA7S4kRugVpmU4QGjJTAjMAwGA1UdEwEB/wQCMAAwEwYLKwYBBAGC5RwCAQEEBAMCBSAwCgYIKoZIzj0EAwIDSAAwRQIgQW6pcL/q9Q2Dmrn5/1HYiHk4Khi34HwyWXszVOGp+gwCIQCckpBfk3b6lnEvQp7sL3pYWlJ0FS9UC7ux82pKGLhisg==',
+    ),
+]
+
+export async function checkAttestation(identity: PasskeyIdentity): Promise<AttestationResult | null> {
+    if (!identity.attestationObjectRaw || !identity.clientDataJSONRaw) return null
+    const attestationObject = base64urlDecode(identity.attestationObjectRaw)
+    const clientDataJSON = base64urlDecode(identity.clientDataJSONRaw)
+    const clientDataHash = sha256(clientDataJSON)
+    return verifyAttestation(attestationObject, clientDataHash, PINNED_ATTESTATION_ROOTS)
+}
 
 const P256_MULTICODEC_PREFIX = new Uint8Array([0x80, 0x24])
 

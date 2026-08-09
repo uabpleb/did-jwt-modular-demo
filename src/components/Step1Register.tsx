@@ -15,7 +15,7 @@ export default function Step1Register({deviceBoundRequired, onRegistered, log}: 
     const [result, setResult] = useState<StepResult>({ok: true, msg: ''})
     const [pending, setPending] = useState(false)
 
-    const handleClick = async () => {
+    const handleClick = async (requestAttestation: boolean) => {
         if(pending) return
         setPending(true)
         try {
@@ -24,6 +24,7 @@ export default function Step1Register({deviceBoundRequired, onRegistered, log}: 
                 rpName: RP_NAME,
                 userName: `user-${Date.now()}`,
                 requireDeviceBound: deviceBoundRequired,
+                requestAttestation,
             })
             onRegistered(identity)
             setResult({ok: true, msg: 'Registered. The passkey is now the DID controller'})
@@ -39,8 +40,11 @@ export default function Step1Register({deviceBoundRequired, onRegistered, log}: 
     return (
         <div className="step">
             <h2>1. Register a passkey</h2>
-            <button type="button" onClick={handleClick} disabled={pending}>
+            <button type="button" onClick={() => handleClick(false)} disabled={pending}>
                 {pending ? 'Registering...': 'Register a passkey'}
+            </button>
+            <button type="button" onClick={() => handleClick(true)} disabled={pending}>
+                {pending ? 'Registering...': 'Register a passkey (request also an attestation)'}
             </button>
             {result && <p className={String(result.ok)}>{result.msg}</p>}
         </div>
