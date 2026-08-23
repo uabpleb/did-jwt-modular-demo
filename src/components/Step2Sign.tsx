@@ -4,6 +4,7 @@ import { WebAuthnSigner, WEBAUTHN_ALG, BrowserAuthenticatorBackend, base64urlDec
 import type { PasskeyIdentity } from '../utils/registration'
 import { resolveDiscoverableCredential } from '../utils/registration'
 import type { StepResult } from './step-types'
+import { toConfirmationClaim } from '../utils/cnf'
 
 interface Props {
   identity: PasskeyIdentity | null
@@ -20,6 +21,9 @@ function buildVcPayload(identity: PasskeyIdentity) {
   const now = Math.floor(Date.now() / 1000)
   const basePayload = {
     sub: identity.didJwk,
+    // RFC 7800 confirmation claim - see utils/cnf.ts for what this does and does not add
+    // over the did:jwk-encoded sub, and why it's the standard mechanism to use regardless.
+    cnf: toConfirmationClaim(base64urlDecode(identity.publicKey)),
     // iat, not nbf: per the "Securing Verifiable Credentials using JOSE and COSE" spec, nbf is
     // explicitly NOT RECOMMENDED for VC-JWTs ("makes little sense to assign a future date to a
     // signature") - iat is the intended claim for when the signature itself was created.

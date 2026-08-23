@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import { createJWT, verifyJWT } from 'did-jwt'
 import { Resolver } from 'did-resolver'
-import { WebAuthnSigner, WebAuthnVerifier, WEBAUTHN_ALG, BrowserAuthenticatorBackend, base64urlDecode } from 'did-jwt-webauthn-signer'
+import { WebAuthnSigner, WebAuthnVerifier, WEBAUTHN_ALG, BrowserAuthenticatorBackend, base64urlDecode, p256PublicKeyToDidJwk } from 'did-jwt-webauthn-signer'
 import type { PasskeyIdentity } from '../utils/registration'
 import type { StepResult } from './step-types'
 import type { PresentedVp } from '../App'
+import { fromConfirmationJwk } from '../utils/cnf'
+import type { ConfirmationJwk } from '../utils/cnf'
 
 interface Props {
   holderIdentity: PasskeyIdentity | null
@@ -56,18 +58,33 @@ export default function Step4Present({ holderIdentity, jwt, resolver, deviceBoun
       let vcLine = ''
       if (typeof vc === 'string') {
         const vcResult = await verifyJWT(vc, { resolver }, new WebAuthnVerifier(holderIdentity.rpId, verifierOpts))
-        const vcSubject = (vcResult.payload as { sub?: string }).sub
-        
+        const vcPayload = vcResult.payload as { sub?: string; cnf?: { jwk: ConfirmationJwk } }
 
-        if (vpResult.issuer !== vcSubject) {
-          throw new Error(`Holder binding failed: VP signed by ${vpResult.issuer}, but VC names subject ${vcSubject}`)
+        // Holder binding is now checked against the standard cnf.jwk claim (RFC 7800 / SD-JWT VC),
+        // not against `sub`. did:jwk resolution is a pure, local, deterministic decode of the DID
+        // string (Section soa:ssi:did-methods) - so deriving the did:jwk that cnf.jwk WOULD produce,
+        // and comparing it against the VP's already-verified signer, is exactly equivalent to
+        // checking that the VP was signed by the key cnf actually names.
+        if (!vcPayload.cnf?.jwk) {
+          throw new Error('Holder binding failed: VC does not carry a cnf claim to bind against')
+        }
+        const expectedHolderDid = p256PublicKeyToDidJwk(fromConfirmationJwk(vcPayload.cnf.jwk))
+
+        if (vpResult.issuer !== expectedHolderDid) {
+          throw new Error(
+            `Holder binding failed: VP signed by ${vpResult.issuer}, but VC's cnf names the key for ${expectedHolderDid}`
+          )
         }
 
-        vcLine = ` ↳ embedded VC also verified (issuer = ${vcResult.issuer}) - holder matches VC subject ✓`
+        const cnfMatchesSub = vcPayload.sub === expectedHolderDid
+        vcLine = ` ↳ embedded VC also verified (issuer = ${vcResult.issuer}) - holder matches VC cnf ✓${
+          cnfMatchesSub ? '' : ' (note: cnf differs from sub - see utils/cnf.ts)'
+        }`
 
-        log('✅ Embedded VC also verified (issuer signature, holder binding OK).', {
+        log('✅ Embedded VC also verified (issuer signature, holder binding via cnf OK).', {
           issuer: vcResult.issuer,
-          vcSubject,
+          sub: vcPayload.sub,
+          expectedHolderDidFromCnf: expectedHolderDid,
         })
       }
 
