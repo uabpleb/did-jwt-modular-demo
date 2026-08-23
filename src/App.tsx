@@ -1,4 +1,4 @@
-import { act, useState } from 'react'
+import { useState } from 'react'
 //import reactLogo from './assets/react.svg'
 //import viteLogo from './assets/vite.svg'
 //import heroImg from './assets/hero.png'
@@ -22,6 +22,8 @@ import PresentedVpPanel from './components/PresentedVpPanel'
 import JwtPanel from './components/JwtPanel'
 import SdIdentityPanel from './components/SdIdentityPanel'
 
+import { DEVTOOLS_VIRTUAL_AUTHENTICATOR_ROOT_PEM } from './utils/pem'
+
 const STORAGE_KEY = 'passkey-identities'
 
 export interface PresentedVp {
@@ -39,6 +41,7 @@ function App() {
     const [lastJwt, setLastJwt] = useState<string|null>(null)
     const [presentedVp, setPresentedVp] = useState<PresentedVp|null>(null)
     const [deviceBoundRequired, setDeviceBoundRequired] = useState<boolean>(false)
+    const [trustedRootsPem, setTrustedRootsPem] = useState(DEVTOOLS_VIRTUAL_AUTHENTICATOR_ROOT_PEM)
 
     const log = (msg: string, obj?: unknown) => console.log(msg, obj)
 
@@ -95,14 +98,14 @@ function App() {
           <div className="steps-column">
             <Step1Register deviceBoundRequired={deviceBoundRequired} onRegistered={handleRegistered} log={log} />
             <Step2Sign identity={issuerIdentity} identities={identities} onIdentityResolved={handleIssuerResolved} onSigned={setLastJwt} log={log} />
-            <Step3Verify deviceBoundRequired={deviceBoundRequired} identity={issuerIdentity} jwt={lastJwt} resolver={resolver} log={log} />
+            <Step3Verify deviceBoundRequired={deviceBoundRequired} identity={issuerIdentity} jwt={lastJwt} resolver={resolver} trustedRootsPem={trustedRootsPem} onTrustedRootsPemChange={setTrustedRootsPem} log={log} />
             <Step4Present deviceBoundRequired={deviceBoundRequired} holderIdentity={holderIdentity} jwt={lastJwt} resolver={resolver} onPresented={setPresentedVp} log={log} />
             <SdIdentityPanel identity={holderIdentity} jwt={lastJwt} resolver={resolver} deviceBoundRequired={deviceBoundRequired} log={log} />
             <Step5Replay identity={holderIdentity} presentedVp={presentedVp} resolver={resolver} log={log} />
             <Step6Tamper identity={issuerIdentity} jwt={lastJwt} resolver={resolver} deviceBoundRequired={deviceBoundRequired} log={log} />
           </div>
           <div className="helper-column">
-            <IdentityPanel identity={issuerIdentity} />
+            <IdentityPanel identity={issuerIdentity} trustedRootsPem={trustedRootsPem} />
             <PresentedVpPanel presentedVp={presentedVp} />
             <JwtPanel jwt={lastJwt} />
           </div>

@@ -93,7 +93,7 @@ export default function SdIdentityPanel({ identity, jwt, resolver, deviceBoundRe
             })
 
             const verifier = new WebAuthnVerifier(identity.rpId, { origin: location.origin, requireDeviceBound: deviceBoundRequired})
-            // expectedNonce must match what was just used — re-derive by re-splitting isn't available here,
+            // expectedNonce must match what was just used - re-derive by re-splitting isn't available here,
             // so verify against the same call's nonce by capturing it above instead of re-generating.
             const result = await verifySdPresentation(combined, {
                 resolver: resolver,
@@ -120,7 +120,7 @@ export default function SdIdentityPanel({ identity, jwt, resolver, deviceBoundRe
 
   return (
     <div className="step">
-      <h2>Selective Disclosure — side by side</h2>
+      <h2>Selective Disclosure - side by side</h2>
       <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
         <div style={{ flex: 1, minWidth: '260px' }}>
           <h3 style={{ fontSize: '1rem' }}>Plain VC (Step 2)</h3>

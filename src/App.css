@@ -227,7 +227,7 @@ pre {
 
 @media (max-width: 900px) {
   .layout {
-    grid-template-columns: 1fr; /* stack on narrow screens — sticky sidebar doesn't make sense there */
+    grid-template-columns: 1fr; /* stack on narrow screens - sticky sidebar doesn't make sense there */
   }
   .helper-column {
     position: static;

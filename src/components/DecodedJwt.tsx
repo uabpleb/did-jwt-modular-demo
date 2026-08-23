@@ -16,7 +16,7 @@ function decodeSegment(b64: string): unknown {
 export default function DecodedJwt({ jwt, label }: Props) {
   const parts = jwt.split('.')
   if (parts.length !== 3) {
-    // Not a plain JWT (e.g. an SD combined string) — fall back to raw display.
+    // Not a plain JWT (e.g. an SD combined string) - fall back to raw display.
     return <pre>{jwt}</pre>
   }
 

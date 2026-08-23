@@ -1,157 +1,58 @@
 /**
  * registration.ts
  *
- * Browser-side WebAuthn registration helper.
- *
- * WebAuthn does not expose an API to query which algorithms an authenticator
- * supports before attempting registration (unlike CTAP2, which does support
- * such queries between the browser/OS and hardware). This is a deliberate
- * privacy design choice — exposing detailed capability information would be
- * a fingerprinting vector. As a consequence, this function must attempt
- * registration with a list of acceptable algorithms and read back which one
- * was actually used, rather than proactively selecting one.
+ * Thin demo-side wrapper around the library's registration ceremony
+ * (registerPasskey, resolveDiscoverableCredential, formatAaguid), which now
+ * lives in did-jwt-webauthn-signer itself - nothing about the ceremony was
+ * actually demo-specific. What genuinely IS demo-specific, and stays here:
+ *   - did:key derivation, kept purely for this demo's did:jwk-vs-did:key
+ *     comparison view (the library standardized on did:jwk; see thesis
+ *     section on DID method comparison for why)
+ *   - always requesting attestation at registration, so this demo's later
+ *     steps have something to embed/verify (the library itself defaults to
+ *     'none', to avoid silently changing the registration prompt for
+ *     callers who don't ask for it)
  */
 
 import {
-    spkiToP256PublicKey,
-    p256PublicKeyToDidJwk,
-    parseAuthenticatorData,
-    base64urlEncode,
+    registerPasskey as libraryRegisterPasskey,
+    resolveDiscoverableCredential,
+    formatAaguid,
     base64urlDecode,
     verifyAttestation,
-    type AttestationResult
 } from 'did-jwt-webauthn-signer'
-
+import type {
+    PasskeyIdentity as LibraryPasskeyIdentity,
+    RegisterPasskeyOptions,
+    AttestationResult,
+} from 'did-jwt-webauthn-signer'
 import { p256 } from '@noble/curves/nist.js'
 import { base58 } from '@scure/base'
-import { sha256 } from '@noble/hashes/sha2.js'
 
-export const WEBAUTHN_ALG = 'WebAuthn'
+export type { RegisterPasskeyOptions }
+export { resolveDiscoverableCredential, formatAaguid }
 
-const SUPPORTED_COSE_ALGS = [
-    { alg: -7, type: 'public-key' as const },
-    { alg: -257, type: 'public-key' as const },
-]
-
-export interface RegisterPasskeyOptions {
-    rpId: string
-    rpName: string
-    userName: string
-    requireDeviceBound?: boolean
-    requestAttestation?: boolean,
-}
-
-export interface PasskeyIdentity {
-    // TODO: review if all these are necessary
-    credentialId: string   // base64url — JSON-safe
-    publicKey: string       // base64url — JSON-safe
-    didJwk: string
+/** The library's PasskeyIdentity, plus this demo's own did:key comparison field. */
+export interface PasskeyIdentity extends LibraryPasskeyIdentity {
     didKey: string
-    rpId: string
-    coseAlgorithm: number
-    deviceBound?: boolean
-    aaguid?: string //self-reported by the authenticator at registration, not cryptographically verified.
-    attestationObjectRaw?: string,
-    clientDataJSONRaw?: string,
 }
+
 
 export async function registerPasskey(options: RegisterPasskeyOptions): Promise<PasskeyIdentity> {
-    if (typeof navigator === 'undefined' || !navigator.credentials) {
-        throw new Error('registerPasskey: navigator.credentials is not available in this environment')
-    }
-
-    const credential = (await navigator.credentials.create({
-        publicKey: {
-            rp: { id: options.rpId, name: options.rpName },
-            user: {
-                id: crypto.getRandomValues(new Uint8Array(16)),
-                name: options.userName,
-                displayName: options.userName,
-            },
-            challenge: crypto.getRandomValues(new Uint8Array(32)),
-            pubKeyCredParams: SUPPORTED_COSE_ALGS,
-            authenticatorSelection: { userVerification: 'required', residentKey: 'required' },
-            ...(options.requestAttestation ? { attestation: 'direct' as const} : {})
-        },
-    })) as PublicKeyCredential
-
-    const response = credential.response as AuthenticatorAttestationResponse
-
-    let attestationObjectRaw: string|undefined
-    let clientDataJSONRaw: string|undefined
-    if (response.attestationObject) {
-        attestationObjectRaw = base64urlEncode(new Uint8Array(response.attestationObject))
-        clientDataJSONRaw = base64urlEncode(new Uint8Array(response.clientDataJSON))
-    }
-
-    const coseAlgorithm = response.getPublicKeyAlgorithm()
-
-    if (coseAlgorithm !== -7) {
-        throw new Error(
-            `registerPasskey: unsupported COSE algorithm ${coseAlgorithm} — only ES256 (P-256) is currently implemented`
-        )
-    }
-
-    const spki = response.getPublicKey()
-    if (!spki) throw new Error('registerPasskey: authenticator did not return a public key')
-
-    const publicKeyBytes = await spkiToP256PublicKey(spki)
-    const didJwk = p256PublicKeyToDidJwk(publicKeyBytes)
-    const didKey = p256PublicKeyToDidKey(publicKeyBytes)
-
-    let deviceBound: boolean | undefined
-    let aaguid: string|undefined
-    if (typeof response.getAuthenticatorData === 'function') {
-        const authData = new Uint8Array(response.getAuthenticatorData())
-        const parsed = parseAuthenticatorData(authData)
-        if (parsed.attestedCredentialData) {
-            aaguid = formatAaguid(parsed.attestedCredentialData.aaguid)
-        }
-        deviceBound = !parsed.flags.backupEligible
-    }
-
-    if (options.requireDeviceBound && deviceBound === false) {
-        throw new Error('registerPasskey: a device-bound passkey was required, but this one is syncable (BE=1)')
-    }
-
-    return {
-        credentialId: base64urlEncode(new Uint8Array(credential.rawId)),
-        publicKey: base64urlEncode(publicKeyBytes),
-        didJwk,
-        didKey,
-        rpId: options.rpId,
-        coseAlgorithm,
-        deviceBound,
-        aaguid,
-        attestationObjectRaw,
-        clientDataJSONRaw
-    }
-}
-
-
-// Pinned trust anchors — hardcoded, never fetched over the network (see attestation.ts's
-// module doc for why). Empty for now: add Yubico's published root cert here once available.
-//TODO: load from file
-const PINNED_ATTESTATION_ROOTS: Uint8Array[] = [
-    base64urlDecode(
-        'MIIB1DCCAXqgAwIBAgIBATAKBggqhkjOPQQDAjBgMQswCQYDVQQGEwJVUzERMA8GA1UECgwIQ2hyb21pdW0xIjAgBgNVBAsMGUF1dGhlbnRpY2F0b3IgQXR0ZXN0YXRpb24xGjAYBgNVBAMMEUJhdGNoIENlcnRpZmljYXRlMB4XDTE3MDcxNDAyNDAwMFoXDTQ2MDgwNDE0NTk1N1owYDELMAkGA1UEBhMCVVMxETAPBgNVBAoMCENocm9taXVtMSIwIAYDVQQLDBlBdXRoZW50aWNhdG9yIEF0dGVzdGF0aW9uMRowGAYDVQQDDBFCYXRjaCBDZXJ0aWZpY2F0ZTBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABI1hfmXJUI5kvMVnOsgqZ5naPBRGaCwljEY//99Y39L6Pmw3i1PXlcSk3/tBme3Xhi8jq68CA7S4kRugVpmU4QGjJTAjMAwGA1UdEwEB/wQCMAAwEwYLKwYBBAGC5RwCAQEEBAMCBSAwCgYIKoZIzj0EAwIDSAAwRQIgQW6pcL/q9Q2Dmrn5/1HYiHk4Khi34HwyWXszVOGp+gwCIQCckpBfk3b6lnEvQp7sL3pYWlJ0FS9UC7ux82pKGLhisg==',
-    ),
-]
-
-export async function checkAttestation(identity: PasskeyIdentity): Promise<AttestationResult | null> {
-    if (!identity.attestationObjectRaw || !identity.clientDataJSONRaw) return null
-    const attestationObject = base64urlDecode(identity.attestationObjectRaw)
-    const clientDataJSON = base64urlDecode(identity.clientDataJSONRaw)
-    const clientDataHash = sha256(clientDataJSON)
-    return verifyAttestation(attestationObject, clientDataHash, PINNED_ATTESTATION_ROOTS)
+    const identity = await libraryRegisterPasskey({
+        ...options,
+        attestation: options.attestation ?? 'direct',
+    })
+    const publicKeyBytes = base64urlDecode(identity.publicKey)
+    return { ...identity, didKey: p256PublicKeyToDidKey(publicKeyBytes) }
 }
 
 const P256_MULTICODEC_PREFIX = new Uint8Array([0x80, 0x24])
 
 /**
- * Derives a did:key DID from a P-256 public key — kept only for UI comparison
- * against did:jwk in this demo. The library itself standardized on did:jwk;
- * see thesis section on DID method comparison for why.
+ * Derives a did:key DID from a P-256 public key - kept only for UI comparison
+ * against did:jwk in this demo. Never moved into the library, unlike
+ * registerPasskey/resolveDiscoverableCredential/formatAaguid above.
  */
 export function p256PublicKeyToDidKey(publicKey: Uint8Array): string {
     let compressed: Uint8Array
@@ -174,41 +75,13 @@ export function p256PublicKeyToDidKey(publicKey: Uint8Array): string {
 }
 
 /**
- * Formats a 16-byte AAGUID as a canonical UUID string (8-4-4-4-12 hex groups).
- * Self-reported by the authenticator — see thesis note on the attestation gap:
- * this value carries no cryptographic guarantee of authenticity.
+ * Convenience wrapper around verifyAttestation() for a stored PasskeyIdentity.
+ * Returns null if this identity was registered without attestation (e.g. an
+ * older identity from local storage), or an AttestationResult otherwise.
  */
-function formatAaguid(bytes: Uint8Array): string {
-    const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
-    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
-}
-
-/**
- * Resolves which resident credential the user selects via the browser's native
- * passkey picker — WITHOUT performing any JWT-binding ceremony.
- *
- * Exists to solve an ordering conflict: WebAuthnSigner's challenge binding
- * requires `iss` (the signer's DID) to already be in the JWT payload before
- * the signing ceremony starts, but discoverable credentials don't reveal
- * *which* credential (and therefore which DID) until the OS picker resolves.
- * So identity must be established in a prior, separate ceremony using a
- * throwaway local challenge — nothing meaningful is bound to it.
- *
- * Note: this demo resolves identity via local storage only (see App.tsx). A
- * real deployment would resolve identity server-side (e.g. from the
- * assertion's userHandle), not from the browser's own storage.
- */
-export async function resolveDiscoverableCredential(rpId: string): Promise<{ credentialId: string }> {
-    if (typeof navigator === 'undefined' || !navigator.credentials) {
-        throw new Error('resolveDiscoverableCredential: navigator.credentials is not available in this environment')
-    }
-    const assertion = (await navigator.credentials.get({
-        publicKey: {
-            challenge: crypto.getRandomValues(new Uint8Array(32)),
-            rpId,
-            userVerification: 'required',
-            // No allowCredentials — the browser enumerates resident credentials and shows the picker.
-        },
-    })) as PublicKeyCredential
-    return { credentialId: base64urlEncode(new Uint8Array(assertion.rawId)) }
+export async function checkAttestation(identity: PasskeyIdentity, trustedRoots: Uint8Array[]): Promise<AttestationResult | null> {
+    if (!identity.attestationObject || !identity.attestationClientDataHash) return null
+    const attestationObject = base64urlDecode(identity.attestationObject)
+    const clientDataHash = base64urlDecode(identity.attestationClientDataHash)
+    return verifyAttestation(attestationObject, clientDataHash, trustedRoots)
 }

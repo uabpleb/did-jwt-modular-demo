@@ -29,10 +29,13 @@ export default function Step4Present({ holderIdentity, jwt, resolver, deviceBoun
       const nonce = crypto.randomUUID()
       const now = Math.floor(Date.now() / 1000)
       const vpPayload = {
-        nbf: now,
+        // iat, not nbf - same spec reasoning as the VC payload in Step2Sign: nbf is NOT
+        // RECOMMENDED for a JWS's own claims. No exp here: the presentation is single-use,
+        // immediate, and already replay-guarded by `nonce`, unlike the VC's longer-lived exp.
+        iat: now,
         nonce,
         vp: {
-          '@context': ['https://www.w3.org/2018/credentials/v1'],
+          '@context': ['https://www.w3.org/ns/credentials/v2'],
           type: ['VerifiablePresentation'],
           verifiableCredential: [jwt],
         },
@@ -60,7 +63,7 @@ export default function Step4Present({ holderIdentity, jwt, resolver, deviceBoun
           throw new Error(`Holder binding failed: VP signed by ${vpResult.issuer}, but VC names subject ${vcSubject}`)
         }
 
-        vcLine = ` ↳ embedded VC also verified (issuer = ${vcResult.issuer}) — holder matches VC subject ✓`
+        vcLine = ` ↳ embedded VC also verified (issuer = ${vcResult.issuer}) - holder matches VC subject ✓`
 
         log('✅ Embedded VC also verified (issuer signature, holder binding OK).', {
           issuer: vcResult.issuer,
@@ -71,9 +74,9 @@ export default function Step4Present({ holderIdentity, jwt, resolver, deviceBoun
       onPresented({ jwt: vpJwt, nonce })
       setStatus({
         ok: true,
-        msg: `✓ VP verified. holder = ${vpResult.issuer} — nonce match: ${nonceOk ? '✓' : '✗'}.${vcLine}`,
+        msg: `✓ VP verified. holder = ${vpResult.issuer} - nonce match: ${nonceOk ? '✓' : '✗'}.${vcLine}`,
       })
-      log('✅ verifyJWT() accepted the VP — holder key verified.', {
+      log('✅ verifyJWT() accepted the VP - holder key verified.', {
         verified: vpResult.verified,
         holder: vpResult.issuer,
         nonce: nonce,
