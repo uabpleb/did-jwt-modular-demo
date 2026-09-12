@@ -97,7 +97,7 @@ function App() {
         <div className="layout">
           <div className="steps-column">
             <Step1Register deviceBoundRequired={deviceBoundRequired} onRegistered={handleRegistered} log={log} />
-            <Step2Sign identity={issuerIdentity} identities={identities} onIdentityResolved={handleIssuerResolved} onSigned={setLastJwt} log={log} />
+            <Step2Sign identity={issuerIdentity} onSigned={setLastJwt} log={log} />
             <Step3Verify deviceBoundRequired={deviceBoundRequired} identity={issuerIdentity} jwt={lastJwt} resolver={resolver} trustedRootsPem={trustedRootsPem} onTrustedRootsPemChange={setTrustedRootsPem} log={log} />
             <Step4Present deviceBoundRequired={deviceBoundRequired} holderIdentity={holderIdentity} jwt={lastJwt} resolver={resolver} onPresented={setPresentedVp} log={log} />
             <SdIdentityPanel identity={holderIdentity} jwt={lastJwt} resolver={resolver} deviceBoundRequired={deviceBoundRequired} log={log} />

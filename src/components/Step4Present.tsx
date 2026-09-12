@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { createJWT, verifyJWT } from 'did-jwt'
 import { Resolver } from 'did-resolver'
-import { WebAuthnSigner, WebAuthnVerifier, WEBAUTHN_ALG, BrowserAuthenticatorBackend, base64urlDecode, p256PublicKeyToDidJwk } from 'did-jwt-webauthn-signer'
+import { WebAuthnSigner, WebAuthnVerifier, WEBAUTHN_ALG, BrowserAuthenticatorBackend, base64urlDecode, ecPublicKeyToDidJwk } from 'did-jwt-webauthn-signer'
 import type { PasskeyIdentity } from '../utils/registration'
 import type { StepResult } from './step-types'
 import type { PresentedVp } from '../App'
@@ -68,7 +68,8 @@ export default function Step4Present({ holderIdentity, jwt, resolver, deviceBoun
         if (!vcPayload.cnf?.jwk) {
           throw new Error('Holder binding failed: VC does not carry a cnf claim to bind against')
         }
-        const expectedHolderDid = p256PublicKeyToDidJwk(fromConfirmationJwk(vcPayload.cnf.jwk))
+        const {publicKeyBytes, algorithm} = fromConfirmationJwk(vcPayload.cnf.jwk)
+        const expectedHolderDid = ecPublicKeyToDidJwk(publicKeyBytes, algorithm)
 
         if (vpResult.issuer !== expectedHolderDid) {
           throw new Error(

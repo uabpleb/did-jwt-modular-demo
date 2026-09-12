@@ -21,39 +21,54 @@
  * binding key not tied to any passkey - was considered and left out of
  * scope, since it would require a second, non-WebAuthn-backed signing
  * mechanism this thesis's architecture does not otherwise have.
+ *
+ * Curve-generic since the algorithm/curve chosen at registration is not
+ * fixed to P-256 (see registerPasskey() and the algorithm registry in
+ * did-jwt-webauthn-signer) - cnf.jwk.crv reflects whatever the authenticator
+ * actually produced, and fromConfirmationJwk() returns the matching
+ * EcAlgorithm alongside the recovered bytes so callers don't have to
+ * re-derive it themselves.
  */
 
-import { base64urlEncode, base64urlDecode } from 'did-jwt-webauthn-signer'
+import { base64urlEncode, base64urlDecode, ecAlgorithmByJwkCrv } from 'did-jwt-webauthn-signer'
+import type { EcAlgorithm } from 'did-jwt-webauthn-signer'
 
 export interface ConfirmationJwk {
     kty: 'EC'
-    crv: 'P-256'
+    crv: string
     x: string
     y: string
 }
 
-/** Builds a `cnf: { jwk }` claim value from a raw uncompressed P-256 public key (0x04 || x || y). */
-export function toConfirmationClaim(publicKeyBytes: Uint8Array): { jwk: ConfirmationJwk } {
-    if (publicKeyBytes.length !== 65 || publicKeyBytes[0] !== 0x04) {
-        throw new Error('toConfirmationClaim: expected an uncompressed P-256 public key (65 bytes, 0x04 prefix)')
+/** Builds a `cnf: { jwk }` claim value from a raw uncompressed EC public key (0x04 || x || y), for the given algorithm/curve. */
+export function toConfirmationClaim(publicKeyBytes: Uint8Array, algorithm: EcAlgorithm): { jwk: ConfirmationJwk } {
+    const expectedLength = 1 + 2 * algorithm.coordinateLength
+    if (publicKeyBytes.length !== expectedLength || publicKeyBytes[0] !== 0x04) {
+        throw new Error(
+            `toConfirmationClaim: expected an uncompressed ${algorithm.jwkCrv} public key (${expectedLength} bytes, 0x04 prefix)`
+        )
     }
     return {
         jwk: {
             kty: 'EC',
-            crv: 'P-256',
-            x: base64urlEncode(publicKeyBytes.slice(1, 33)),
-            y: base64urlEncode(publicKeyBytes.slice(33, 65)),
+            crv: algorithm.jwkCrv,
+            x: base64urlEncode(publicKeyBytes.slice(1, algorithm.coordinateLength + 1)),
+            y: base64urlEncode(publicKeyBytes.slice(algorithm.coordinateLength + 1, expectedLength)),
         },
     }
 }
 
-/** Recovers the raw uncompressed P-256 public key (0x04 || x || y) from a `cnf.jwk` value. */
-export function fromConfirmationJwk(jwk: ConfirmationJwk): Uint8Array {
+/** Recovers the raw uncompressed EC public key (0x04 || x || y) and its algorithm from a `cnf.jwk` value. */
+export function fromConfirmationJwk(jwk: ConfirmationJwk): { publicKeyBytes: Uint8Array; algorithm: EcAlgorithm } {
+    const algorithm = ecAlgorithmByJwkCrv(jwk.crv)
+    if (!algorithm) {
+        throw new Error(`fromConfirmationJwk: unsupported curve "${jwk.crv}" in cnf.jwk`)
+    }
     const x = base64urlDecode(jwk.x)
     const y = base64urlDecode(jwk.y)
-    const bytes = new Uint8Array(65)
+    const bytes = new Uint8Array(1 + 2 * algorithm.coordinateLength)
     bytes[0] = 0x04
     bytes.set(x, 1)
-    bytes.set(y, 33)
-    return bytes
+    bytes.set(y, algorithm.coordinateLength + 1)
+    return { publicKeyBytes: bytes, algorithm }
 }

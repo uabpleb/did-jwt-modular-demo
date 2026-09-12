@@ -2,8 +2,10 @@ import { useState } from 'react'
 import { Resolver } from 'did-resolver'
 import { WebAuthnSigner, WebAuthnVerifier, BrowserAuthenticatorBackend, base64urlDecode, WEBAUTHN_ALG } from 'did-jwt-webauthn-signer'
 import { issueSdCredential, createSdPresentation, verifySdPresentation, type Disclosure } from 'did-jwt-vc'
+import { decodeJWT } from 'did-jwt'
 import type { PasskeyIdentity } from '../utils/registration'
 import type { StepResult } from './step-types'
+import { buildPidCredentialSubject } from '../utils/pid'
 
 interface Props {
     identity: PasskeyIdentity | null
@@ -15,22 +17,14 @@ interface Props {
 
 const AUDIENCE = 'demo-verifier'
 
-function decodePlainClaims(jwt: string | null): Record<string, unknown> | null {
-    if (!jwt) {
-        return null
-    }
-    
-    try {
-        const payload = JSON.parse(new TextDecoder().decode(base64urlDecode(jwt.split('.')[1])))
-        return payload.vc?.credentialSubject ?? null
-    } catch {
-        return null
-    }
-}
+const SELECTIVELY_HIDDEN_FIELDS = ['age_over_18', 'nationalities']
 
 export default function SdIdentityPanel({ identity, jwt, resolver, deviceBoundRequired, log }: Props) {
     const [issued, setIssued] = useState<{ jwt: string; disclosures: Disclosure[] } | null>(null)
-    const [reveal, setReveal] = useState<Record<string, boolean>>({ memberSince: true, verificationLevel: false })
+    const [reveal, setReveal] = useState<Record<string, boolean>>(
+        // age_over_18 defaults to revealed, nationalities defaults to withheld.
+        Object.fromEntries(SELECTIVELY_HIDDEN_FIELDS.map((name) => [name, name === 'age_over_18']))
+    )
     const [presentResult, setPresentResult] = useState<StepResult | null>(null)
     const [claims, setClaims] = useState<Record<string, unknown> | null>(null)
     const [undisclosedCount, setUndisclosedCount] = useState<number | null>(null)
@@ -43,19 +37,23 @@ export default function SdIdentityPanel({ identity, jwt, resolver, deviceBoundRe
         try {
             const backend = new BrowserAuthenticatorBackend(base64urlDecode(identity.credentialId).buffer)
             const signer = new WebAuthnSigner(backend)
+
+            const fullSubject = buildPidCredentialSubject()
+            const disclosed: Record<string, unknown> = {}
+            const hidden: Record<string, unknown> = {}
+            for (const [name, value] of Object.entries(fullSubject)) {
+                const target = (SELECTIVELY_HIDDEN_FIELDS as readonly string[]).includes(name) ? hidden : disclosed
+                target[name] = value
+            }
+
             const result = await issueSdCredential({
                 issuer: {
                     did: identity.didJwk,
                     signer: signer,
                     alg: WEBAUTHN_ALG,
                 },
-                disclosed: {
-                    passkey: true,
-                    demo: 'did-jwt WebAuthn signer'
-                },
-                hidden: {
-                    memberSince: '2024-01-15', verificationLevel:'gold'
-                },
+                disclosed,
+                hidden,
                 base: {
                     sub: identity.didJwk
                 }
@@ -92,7 +90,7 @@ export default function SdIdentityPanel({ identity, jwt, resolver, deviceBoundRe
                 nonce: crypto.randomUUID()
             })
 
-            const verifier = new WebAuthnVerifier(identity.rpId, { origin: location.origin, requireDeviceBound: deviceBoundRequired})
+            const verifier = new WebAuthnVerifier(identity.rpId, { origin: location.origin, requireDeviceBound: deviceBoundRequired })
             // expectedNonce must match what was just used - re-derive by re-splitting isn't available here,
             // so verify against the same call's nonce by capturing it above instead of re-generating.
             const result = await verifySdPresentation(combined, {
@@ -112,11 +110,23 @@ export default function SdIdentityPanel({ identity, jwt, resolver, deviceBoundRe
             setPresentResult({ ok: false, msg: message })
             log(`SD present/verify failed: ${message}`)
         }
-        
+
 
     }
 
-    const plainClaims = decodePlainClaims(jwt)
+    let plainClaims: Record<string, unknown> | null = null
+    let plainClaimsError: string | null = null
+    if (jwt) {
+        try {
+            const payload = decodeJWT(jwt).payload as { vc?: { credentialSubject?: Record<string, unknown> } }
+            if (!payload.vc?.credentialSubject) {
+                throw new Error('Decoded JWT payload has no vc.credentialSubject claim')
+            }
+            plainClaims = payload.vc.credentialSubject
+        } catch (e) {
+            plainClaimsError = (e as Error).message
+        }
+    }
 
   return (
     <div className="step">
@@ -124,7 +134,13 @@ export default function SdIdentityPanel({ identity, jwt, resolver, deviceBoundRe
       <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
         <div style={{ flex: 1, minWidth: '260px' }}>
           <h3 style={{ fontSize: '1rem' }}>Plain VC (Step 2)</h3>
-          {plainClaims ? <pre>{JSON.stringify(plainClaims, null, 2)}</pre> : <p>Sign a credential in Step 2 first.</p>}
+          {plainClaimsError ? (
+            <p className="bad">Failed to read Step 2 credential: {plainClaimsError}</p>
+          ) : plainClaims ? (
+            <pre>{JSON.stringify(plainClaims, null, 2)}</pre>
+          ) : (
+            <p>Sign a credential in Step 2 first.</p>
+          )}
         </div>
 
         <div style={{ flex: 1, minWidth: '260px' }}>
@@ -164,4 +180,3 @@ export default function SdIdentityPanel({ identity, jwt, resolver, deviceBoundRe
     </div>
   )
 }
-
