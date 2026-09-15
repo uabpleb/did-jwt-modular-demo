@@ -3,7 +3,7 @@ import { useState } from 'react'
 //import viteLogo from './assets/vite.svg'
 //import heroImg from './assets/hero.png'
 import './App.css'
-import type { PasskeyIdentity } from './utils/registration'
+import type { PasskeyIdentity } from 'did-jwt-webauthn-signer'
 
 import { Resolver } from 'did-resolver'
 
@@ -18,11 +18,11 @@ import Step6Tamper from './components/Step6Tamper'
 
 // Support components
 import IdentityPanel from './components/IdentityPanel'
-import PresentedVpPanel from './components/PresentedVpPanel'
-import JwtPanel from './components/JwtPanel'
+import SignedVcPanel from './components/JwtPanel'
 import SdIdentityPanel from './components/SdIdentityPanel'
 
 import { DEVTOOLS_VIRTUAL_AUTHENTICATOR_ROOT_PEM } from './utils/pem'
+import IdentitySelect from './components/IdentitySelect'
 
 const STORAGE_KEY = 'passkey-identities'
 
@@ -66,14 +66,6 @@ function App() {
       setPresentedVp(null)
     }
 
-    const handleIssuerResolved = (id: PasskeyIdentity) => {
-      setIssuerIdentity(id)
-    }
-
-    const handleHolderResolved = (id: PasskeyIdentity) => {
-      setHolderIdentity(id)
-    }
-
 
     return (
 
@@ -106,8 +98,7 @@ function App() {
           </div>
           <div className="helper-column">
             <IdentityPanel identity={issuerIdentity} trustedRootsPem={trustedRootsPem} />
-            <PresentedVpPanel presentedVp={presentedVp} />
-            <JwtPanel jwt={lastJwt} />
+            <SignedVcPanel jwt={lastJwt} />
           </div>
         </div>
 
@@ -132,30 +123,4 @@ function loadIdentities(): PasskeyIdentity[] {
   } catch {
     return []
   }
-}
-
-function IdentitySelect({ label, identities, value, onChange }: {
-  label: string
-  identities: PasskeyIdentity[]
-  value: PasskeyIdentity | null
-  onChange: (id: PasskeyIdentity) => void
-}) {
-  return (
-    <label style={{ display: 'block', margin: '6px 0' }}>
-      {label}{' '}
-      <select
-        value={value?.credentialId ?? ''}
-        onChange={(e) => {
-          const found = identities.find((i) => i.credentialId === e.target.value)
-          if (found) onChange(found)
-        }}
-      >
-        {identities.map((i) => (
-          <option key={i.credentialId} value={i.credentialId}>
-            {i.didJwk.slice(0, 28)}…
-          </option>
-        ))}
-      </select>
-    </label>
-  )
 }

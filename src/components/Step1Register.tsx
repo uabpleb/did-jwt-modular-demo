@@ -1,5 +1,6 @@
 import { useState } from "react"
-import { registerPasskey, type PasskeyIdentity } from "../utils/registration"
+import { registerPasskey } from "../utils/registration"
+import { type PasskeyIdentity } from 'did-jwt-webauthn-signer'
 import { type StepResult } from "./step-types"
 
 interface Props {
@@ -24,7 +25,7 @@ export default function Step1Register({deviceBoundRequired, onRegistered, log}: 
                 rpName: RP_NAME,
                 userName: `user-${Date.now()}`,
                 requireDeviceBound: deviceBoundRequired,
-                requestAttestation,
+                attestation: requestAttestation ? 'direct' : 'none', //no 'business' AttestationConveyancePreference option, it needs to be set up
             })
             onRegistered(identity)
             setResult({ok: true, msg: 'Registered. The passkey is now the DID controller'})

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { verifyJWT } from 'did-jwt'
 import { Resolver } from 'did-resolver'
 import { WebAuthnVerifier, extractAttestation, base64urlDecode } from 'did-jwt-webauthn-signer'
-import type { PasskeyIdentity } from '../utils/registration'
+import type { PasskeyIdentity } from 'did-jwt-webauthn-signer'
 import type { StepResult } from './step-types'
 import { parsePemRoots } from '../utils/pem'
 
@@ -67,7 +67,7 @@ export default function Step3Verify({ identity, jwt, resolver, deviceBoundRequir
         { resolver },
         new WebAuthnVerifier(identity.rpId, { origin: location.origin, requireDeviceBound: deviceBoundRequired }),
       )
-      setStatus({ ok: true, msg: `✓ verifyJWT() succeeded. signer = ${result.signer.id}` })
+      setStatus({ ok: true, msg: `verifyJWT() succeeded. signer = ${result.signer.id}` })
       log('✅ verifyJWT() succeeded.', { verified: result.verified, signer: result.signer.id, issuer: result.issuer })
 
       await checkAttestation(result.payload as Record<string, unknown>)
@@ -108,7 +108,7 @@ export default function Step3Verify({ identity, jwt, resolver, deviceBoundRequir
       {status && <p className={status.ok ? 'ok' : 'bad'}>{status.msg}</p>}
 
       <details style={{ marginTop: 8 }}>
-        <summary>Trusted attestation roots (optional, PEM, paste one or more certificates). Shared with IdentityPanel.</summary>
+        <summary>Configurable trusted attestation roots (optional, PEM, paste one or more certificates).</summary>
         <textarea
           rows={4}
           style={{ width: '100%' }}

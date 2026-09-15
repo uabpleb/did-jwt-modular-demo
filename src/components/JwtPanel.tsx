@@ -4,11 +4,11 @@ interface Props {
   jwt: string | null
 }
 
-export default function JwtPanel({ jwt }: Props) {
+export default function SignedVcPanel({ jwt }: Props) {
   if (!jwt) return null
   return (
     <div className="step">
-      <h2>Last signed JWT</h2>
+      <h2>Signed VC</h2>
       <DecodedJwt jwt={jwt} />
     </div>
   )

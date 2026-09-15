@@ -2,11 +2,12 @@ import { useState } from 'react'
 import { createJWT, verifyJWT } from 'did-jwt'
 import { Resolver } from 'did-resolver'
 import { WebAuthnSigner, WebAuthnVerifier, WEBAUTHN_ALG, BrowserAuthenticatorBackend, base64urlDecode, ecPublicKeyToDidJwk } from 'did-jwt-webauthn-signer'
-import type { PasskeyIdentity } from '../utils/registration'
+import type { PasskeyIdentity } from 'did-jwt-webauthn-signer'
 import type { StepResult } from './step-types'
 import type { PresentedVp } from '../App'
 import { fromConfirmationJwk } from '../utils/cnf'
 import type { ConfirmationJwk } from '../utils/cnf'
+import { summarizeVpAdditions } from '../utils/vp'
 
 interface Props {
   holderIdentity: PasskeyIdentity | null
@@ -19,6 +20,7 @@ interface Props {
 
 export default function Step4Present({ holderIdentity, jwt, resolver, deviceBoundRequired, onPresented, log }: Props) {
   const [status, setStatus] = useState<StepResult | null>(null)
+  const [vpSummary, setVpSummary] = useState<Record<string, unknown> | null>(null)
 
   // DEBUG
   const [busy, setBusy] = useState(false)
@@ -26,14 +28,12 @@ export default function Step4Present({ holderIdentity, jwt, resolver, deviceBoun
   const handleClick = async () => {
     if (busy || !jwt || !holderIdentity) return
     setBusy(true)
+    setVpSummary(null)
 
     try {
       const nonce = crypto.randomUUID()
       const now = Math.floor(Date.now() / 1000)
       const vpPayload = {
-        // iat, not nbf - same spec reasoning as the VC payload in Step2Sign: nbf is NOT
-        // RECOMMENDED for a JWS's own claims. No exp here: the presentation is single-use,
-        // immediate, and already replay-guarded by `nonce`, unlike the VC's longer-lived exp.
         iat: now,
         nonce,
         vp: {
@@ -45,7 +45,7 @@ export default function Step4Present({ holderIdentity, jwt, resolver, deviceBoun
       const backend = new BrowserAuthenticatorBackend(base64urlDecode(holderIdentity.credentialId).buffer)
       const signer = new WebAuthnSigner(backend)
       const vpJwt = await createJWT(vpPayload, { issuer: holderIdentity.didJwk, signer, alg: WEBAUTHN_ALG })
-      log('✅ Holder signed a Verifiable Presentation (passkey-bound).', { nonce, vp: vpJwt })
+      log('Holder signed a Verifiable Presentation (passkey-bound).', { nonce, vp: vpJwt })
 
       const verifierOpts = { origin: location.origin, requireDeviceBound: deviceBoundRequired }
       const vpResult = await verifyJWT(vpJwt, { resolver }, new WebAuthnVerifier(holderIdentity.rpId, verifierOpts))
@@ -60,11 +60,6 @@ export default function Step4Present({ holderIdentity, jwt, resolver, deviceBoun
         const vcResult = await verifyJWT(vc, { resolver }, new WebAuthnVerifier(holderIdentity.rpId, verifierOpts))
         const vcPayload = vcResult.payload as { sub?: string; cnf?: { jwk: ConfirmationJwk } }
 
-        // Holder binding is now checked against the standard cnf.jwk claim (RFC 7800 / SD-JWT VC),
-        // not against `sub`. did:jwk resolution is a pure, local, deterministic decode of the DID
-        // string (Section soa:ssi:did-methods) - so deriving the did:jwk that cnf.jwk WOULD produce,
-        // and comparing it against the VP's already-verified signer, is exactly equivalent to
-        // checking that the VP was signed by the key cnf actually names.
         if (!vcPayload.cnf?.jwk) {
           throw new Error('Holder binding failed: VC does not carry a cnf claim to bind against')
         }
@@ -78,11 +73,11 @@ export default function Step4Present({ holderIdentity, jwt, resolver, deviceBoun
         }
 
         const cnfMatchesSub = vcPayload.sub === expectedHolderDid
-        vcLine = ` ↳ embedded VC also verified (issuer = ${vcResult.issuer}) - holder matches VC cnf ✓${
-          cnfMatchesSub ? '' : ' (note: cnf differs from sub - see utils/cnf.ts)'
+        vcLine = ` Embedded VC also verified, holder matches VC cnf.${
+          cnfMatchesSub ? '' : ' (Note: cnf differs from sub - see utils/cnf.ts.)'
         }`
 
-        log('✅ Embedded VC also verified (issuer signature, holder binding via cnf OK).', {
+        log('Embedded VC also verified (issuer signature, holder binding via cnf OK).', {
           issuer: vcResult.issuer,
           sub: vcPayload.sub,
           expectedHolderDidFromCnf: expectedHolderDid,
@@ -90,11 +85,12 @@ export default function Step4Present({ holderIdentity, jwt, resolver, deviceBoun
       }
 
       onPresented({ jwt: vpJwt, nonce })
+      setVpSummary(summarizeVpAdditions(vpJwt))
       setStatus({
         ok: true,
-        msg: `✓ VP verified. holder = ${vpResult.issuer} - nonce match: ${nonceOk ? '✓' : '✗'}.${vcLine}`,
+        msg: `VP verified. Nonce ${nonceOk ? 'fresh' : 'stale (unexpected)'}.${vcLine}`,
       })
-      log('✅ verifyJWT() accepted the VP - holder key verified.', {
+      log('verifyJWT() accepted the VP - holder key verified.', {
         verified: vpResult.verified,
         holder: vpResult.issuer,
         nonce: nonce,
@@ -102,8 +98,8 @@ export default function Step4Present({ holderIdentity, jwt, resolver, deviceBoun
       })
     } catch (e) {
       const message = (e as Error).message
-      setStatus({ ok: false, msg: `✗ ${message}` })
-      log(`❌ Presentation failed: ${message}`)
+      setStatus({ ok: false, msg: message })
+      log(`Presentation failed: ${message}`)
     } finally {
       setBusy(false)
     }
@@ -114,6 +110,14 @@ export default function Step4Present({ holderIdentity, jwt, resolver, deviceBoun
       <h2>4. Present (Verifiable Presentation)</h2>
       <button type="button" onClick={handleClick} disabled={!jwt || !holderIdentity}>Present & verify</button>
       {status && <p className={status.ok ? 'ok' : 'bad'}>{status.msg}</p>}
+      {vpSummary && (
+        <>
+          <p style={{ fontSize: '0.8rem', color: '#64748b', marginTop: 10, marginBottom: 4 }}>
+            What the VP adds on top of the VC
+          </p>
+          <pre>{JSON.stringify(vpSummary, null, 2)}</pre>
+        </>
+      )}
     </div>
   )
 }

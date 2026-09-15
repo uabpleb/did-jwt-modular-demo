@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { verifyJWT } from 'did-jwt'
 import { Resolver } from 'did-resolver'
 import { WebAuthnVerifier } from 'did-jwt-webauthn-signer'
-import type { PasskeyIdentity } from '../utils/registration'
+import type { PasskeyIdentity } from 'did-jwt-webauthn-signer'
 import type { StepResult } from './step-types'
 import type { PresentedVp } from '../App'
 
@@ -33,7 +33,7 @@ export default function Step5Replay({ identity, presentedVp, resolver, log }: Pr
                 return
             }
 
-            setResult({ok: true, msg: `Replay rejected. Signature still verifies, but nonce is stale. Expected ${freshChallenge}, got ${presentedNonce ?? '∅'}. Signature validity ≠ freshness.`})
+            setResult({ok: true, msg: `Replay successfully rejected. Signature still verifies, but nonce is stale. Expected ${freshChallenge}, got ${presentedNonce ?? '∅'}. Signature validity ≠ freshness.`})
         } catch (e) {
             const message = (e as Error).message
             setResult({ok: false, msg: `fail: ${message}`})

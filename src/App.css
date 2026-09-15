@@ -90,16 +90,33 @@ body {
   background: rgba(254, 242, 242, 0.95);
 }
 
+/* Typography hierarchy: numbered steps (the narrative spine, left column) read
+   bolder and larger than the supporting reference panels (right column) -
+   scoped off the existing layout wrappers, no component changes needed. */
+.steps-column .step h2 {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #1e293b;
+  letter-spacing: -0.01em;
+}
+
+.helper-column .step h2 {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #475569;
+}
+
+/* Fallback for any .step h2 outside both wrappers */
 .step h2 {
   font-size: 1.3rem;
   font-weight: 600;
   color: #1e293b;
 }
 
-/* Buttons */
+/* Buttons - distinct accent from the page background, not a shade of it */
 .step button,
 #center > button:first-of-type {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #14b8a6 0%, #0d9488 100%);
   color: white;
   border: none;
   padding: 12px 22px;
@@ -108,14 +125,14 @@ body {
   font-size: 0.95rem;
   font-weight: 600;
   transition: all 0.3s ease;
-  box-shadow: 0 4px 16px rgba(102, 126, 234, 0.3);
+  box-shadow: 0 4px 16px rgba(20, 184, 166, 0.35);
   align-self: flex-start;
 }
 
 .step button:hover:not(:disabled),
 #center > button:first-of-type:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(102, 126, 234, 0.4);
+  box-shadow: 0 8px 24px rgba(20, 184, 166, 0.45);
 }
 
 .step button:disabled,
@@ -142,30 +159,14 @@ body {
   border: 1px solid #22c55e;
   color: #14532d;
 }
-.ok::before {
-  content: '✓';
-  position: absolute;
-  left: 12px;
-  top: 12px;
-  font-weight: bold;
-  color: #15803d;
-}
 
 .bad {
   background: rgba(239, 68, 68, 0.15);
   border: 1px solid #ef4444;
   color: #7f1d1d;
 }
-.bad::before {
-  content: '⚠';
-  position: absolute;
-  left: 12px;
-  top: 12px;
-  font-weight: bold;
-  color: #dc2626;
-}
 
-/* JWT / JSON dumps */
+/* JWT / JSON dumps (block-level) */
 .mono,
 pre {
   background: #f8fafc;
@@ -179,6 +180,18 @@ pre {
   max-height: 240px;
   overflow-y: auto;
   color: #1e293b;
+}
+
+/* Inline cryptographic values (DIDs, hashes, credential IDs) - same monospace
+   treatment as the block dumps above, so any bare value reads as "data" the
+   instant it appears, not just inside a JSON block. */
+code {
+  font-family: 'Monaco', 'Menlo', monospace;
+  font-size: 0.85em;
+  background: #f1f5f9;
+  border-radius: 4px;
+  padding: 1px 5px;
+  color: #0f172a;
 }
 
 .hl {

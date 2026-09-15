@@ -3,7 +3,7 @@ import { Resolver } from 'did-resolver'
 import { WebAuthnSigner, WebAuthnVerifier, BrowserAuthenticatorBackend, base64urlDecode, WEBAUTHN_ALG } from 'did-jwt-webauthn-signer'
 import { issueSdCredential, createSdPresentation, verifySdPresentation, type Disclosure } from 'did-jwt-vc'
 import { decodeJWT } from 'did-jwt'
-import type { PasskeyIdentity } from '../utils/registration'
+import type { PasskeyIdentity } from 'did-jwt-webauthn-signer'
 import type { StepResult } from './step-types'
 import { buildPidCredentialSubject } from '../utils/pid'
 

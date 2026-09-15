@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { createJWT } from 'did-jwt'
 import { WebAuthnSigner, WEBAUTHN_ALG, BrowserAuthenticatorBackend, base64urlDecode, withAttestation, ecAlgorithmByCoseAlg } from 'did-jwt-webauthn-signer'
-import type { PasskeyIdentity } from '../utils/registration'
+import type { PasskeyIdentity } from 'did-jwt-webauthn-signer'
 import type { StepResult } from './step-types'
 import { toConfirmationClaim } from '../utils/cnf'
 import { buildPidCredentialSubject } from '../utils/pid'
@@ -56,7 +56,7 @@ export default function Step2Sign({ identity, onSigned, log }: Props) {
       const jwt = await createJWT(payload, { issuer: identity.didJwk, signer, alg: WEBAUTHN_ALG })
 
       onSigned(jwt)
-      setResult({ ok: true, msg: '✓ Signed. See the JWT below.' })
+      setResult({ ok: true, msg: 'Signed successfully. See the JWT below.' })
       log('✅ Signed VC-JWT via createJWT().', { jwt })
     } catch (e) {
       const message = (e as Error).message
